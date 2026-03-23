@@ -1,8 +1,11 @@
 """
-Polar Accesslink API client.
-Handles token management and all API calls to the Polar platform.
+Polar Accesslink API client — built from official API docs.
+https://www.polar.com/accesslink-api/
 
-Docs: https://www.polar.com/accesslink-api/
+Key notes:
+- Exercises: new non-deprecated endpoint GET /v3/exercises (no transaction, no user-id in path)
+- Sleep: GET /v3/users/{user-id}/sleep returns last 28 nights, then fetch each by ID
+- Daily activity: GET /v3/users/activities (no user-id in path)
 """
 import httpx
 import logging
@@ -41,175 +44,121 @@ class PolarClient:
             r.raise_for_status()
             return r.json()
 
-    # ─── Pull Notifications (transaction model) ───────────────────────────────
+    # ─── Exercises (NEW non-deprecated endpoint) ──────────────────────────────
 
     async def list_exercises(self) -> list[dict]:
         """
-        Polar uses a transaction model — you must:
-        1. Create a transaction
-        2. List available resources
-        3. Fetch each resource
-        4. Commit the transaction
-
-        Returns list of exercise summaries.
+        List exercises from the NEW non-transaction endpoint.
+        GET /v3/exercises — returns last 30 days, no user-id in path.
+        Only exercises uploaded AFTER the user registered with this client are returned.
         """
         async with httpx.AsyncClient() as client:
-            # Create transaction
-            r = await client.post(
-                f"{POLAR_API_BASE}/users/{self._user_id}/exercise-transactions",
+            r = await client.get(
+                f"{POLAR_API_BASE}/exercises",
                 headers=self._headers(),
+                params={"samples": "false", "zones": "false", "route": "false"},
             )
             if r.status_code == 204:
-                logger.info("Polar: no new exercises")
+                logger.info("Polar: no exercises available")
                 return []
             r.raise_for_status()
-            transaction = r.json()
-            transaction_id = transaction["transaction-id"]
-
-            # List exercises in this transaction
-            r = await client.get(
-                f"{POLAR_API_BASE}/users/{self._user_id}/exercise-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
-            r.raise_for_status()
-            exercises_data = r.json()
-            exercise_urls = exercises_data.get("exercises", [])
-
-            exercises = []
-            for url in exercise_urls:
-                ex_r = await client.get(url, headers=self._headers())
-                if ex_r.status_code == 200:
-                    exercises.append(ex_r.json())
-
-            # Commit transaction (marks data as delivered)
-            await client.put(
-                f"{POLAR_API_BASE}/users/{self._user_id}/exercise-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
+            data = r.json()
+            # Response is a list directly
+            exercises = data if isinstance(data, list) else []
             logger.info(f"Polar: fetched {len(exercises)} exercises")
             return exercises
 
-    async def get_exercise_heart_rate_zones(self, exercise_id: str, transaction_id: str) -> Optional[dict]:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{POLAR_API_BASE}/users/{self._user_id}/exercise-transactions/{transaction_id}/{exercise_id}/heart-rate-zones",
-                headers=self._headers(),
-            )
-            if r.status_code == 200:
-                return r.json()
-            return None
-
-    # ─── Physical Info (weight, HR zones) ────────────────────────────────────
-
-    async def get_physical_info(self) -> list[dict]:
-        """Fetch latest physical info entries (weight, HR zones, etc.)."""
-        async with httpx.AsyncClient() as client:
-            r = await client.post(
-                f"{POLAR_API_BASE}/users/{self._user_id}/physical-information-transactions",
-                headers=self._headers(),
-            )
-            if r.status_code == 204:
-                return []
-            r.raise_for_status()
-            transaction = r.json()
-            transaction_id = transaction["transaction-id"]
-
-            r = await client.get(
-                f"{POLAR_API_BASE}/users/{self._user_id}/physical-information-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
-            r.raise_for_status()
-            urls = r.json().get("physical-informations", [])
-
-            results = []
-            for url in urls:
-                res = await client.get(url, headers=self._headers())
-                if res.status_code == 200:
-                    results.append(res.json())
-
-            # Commit
-            await client.put(
-                f"{POLAR_API_BASE}/users/{self._user_id}/physical-information-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
-            return results
-
     # ─── Daily Activity ───────────────────────────────────────────────────────
 
-    async def get_daily_activity(self) -> list[dict]:
-        """Fetch activity summaries (steps, calories, active time)."""
+    async def get_daily_activity(self, days_back: int = 28) -> list[dict]:
+        """
+        List daily activities for the past 28 days.
+        GET /v3/users/activities — no user-id in path, returns last 28 days.
+        """
         async with httpx.AsyncClient() as client:
-            r = await client.post(
-                f"{POLAR_API_BASE}/users/{self._user_id}/activity-transactions",
+            r = await client.get(
+                f"{POLAR_API_BASE}/users/activities",
                 headers=self._headers(),
             )
             if r.status_code == 204:
+                logger.info("Polar: no daily activity data")
                 return []
             r.raise_for_status()
-            transaction_id = r.json()["transaction-id"]
-
-            r = await client.get(
-                f"{POLAR_API_BASE}/users/{self._user_id}/activity-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
-            r.raise_for_status()
-            urls = r.json().get("activity-log", [])
-
-            results = []
-            for url in urls:
-                res = await client.get(url, headers=self._headers())
-                if res.status_code == 200:
-                    results.append(res.json())
-
-            await client.put(
-                f"{POLAR_API_BASE}/users/{self._user_id}/activity-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
-            return results
+            data = r.json()
+            activities = data if isinstance(data, list) else []
+            logger.info(f"Polar: fetched {len(activities)} daily activity records")
+            return activities
 
     # ─── Sleep ────────────────────────────────────────────────────────────────
 
     async def get_sleep(self) -> list[dict]:
         """
-        Fetch sleep data including Nightly Recharge.
-        Uses the newer /sleep endpoint (not transaction-based).
+        Fetch sleep data. Two-step process per the API docs:
+        1. GET /v3/users/{user-id}/sleep → list of nights with sleep IDs
+        2. GET /v3/users/{user-id}/sleep/{sleep-id} → full detail for each night
+
+        Returns last 28 nights.
         """
         async with httpx.AsyncClient() as client:
-            r = await client.post(
-                f"{POLAR_API_BASE}/users/{self._user_id}/sleep-transactions",
+            # Step 1 — get list of available sleep records
+            r = await client.get(
+                f"{POLAR_API_BASE}/users/{self._user_id}/sleep",
                 headers=self._headers(),
             )
             if r.status_code == 204:
+                logger.info("Polar: no sleep data available")
+                return []
+            if r.status_code == 404:
+                logger.warning("Polar: sleep endpoint 404 — make sure device has synced to Polar Flow app recently")
                 return []
             r.raise_for_status()
-            transaction_id = r.json()["transaction-id"]
 
-            r = await client.get(
-                f"{POLAR_API_BASE}/users/{self._user_id}/sleep-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
-            r.raise_for_status()
-            urls = r.json().get("nights", [])
+            data = r.json()
+            logger.debug(f"Polar sleep list response: {data}")
 
+            # Response can be a list directly or {"nights": [...]}
+            if isinstance(data, list):
+                nights_list = data
+            elif isinstance(data, dict):
+                nights_list = data.get("nights", [])
+            else:
+                nights_list = []
+
+            if not nights_list:
+                logger.info("Polar: sleep list returned 0 nights")
+                return []
+
+            logger.info(f"Polar: {len(nights_list)} sleep records in list, fetching details...")
+
+            # Step 2 — fetch full detail for each night
             results = []
-            for url in urls:
-                res = await client.get(url, headers=self._headers())
-                if res.status_code == 200:
-                    results.append(res.json())
+            for night in nights_list:
+                # Each night has an "id" field
+                sleep_id = night.get("id") if isinstance(night, dict) else night
+                if not sleep_id:
+                    results.append(night)  # already detailed
+                    continue
 
-            await client.put(
-                f"{POLAR_API_BASE}/users/{self._user_id}/sleep-transactions/{transaction_id}",
-                headers=self._headers(),
-            )
-            logger.info(f"Polar: fetched {len(results)} sleep records")
+                detail_r = await client.get(
+                    f"{POLAR_API_BASE}/users/{self._user_id}/sleep/{sleep_id}",
+                    headers=self._headers(),
+                )
+                if detail_r.status_code == 200:
+                    results.append(detail_r.json())
+                else:
+                    logger.warning(f"Polar: failed to fetch sleep {sleep_id}: {detail_r.status_code}")
+                    results.append(night)  # fall back to summary
+
+            logger.info(f"Polar: fetched {len(results)} sleep records with details")
             return results
 
-    # ─── Nightly Recharge (ANS + Sleep charge) ────────────────────────────────
+    # ─── Nightly Recharge ─────────────────────────────────────────────────────
 
     async def get_nightly_recharge(self, date: str) -> Optional[dict]:
         """
         Get Nightly Recharge for a specific date (YYYY-MM-DD).
-        This is Polar's key recovery metric combining ANS charge + sleep charge.
+        Combines ANS charge + sleep charge into a recovery score.
+        GET /v3/users/{user-id}/nightly-recharge/{date}
         """
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -219,6 +168,24 @@ class PolarClient:
             if r.status_code == 200:
                 return r.json()
             return None
+
+    async def list_nightly_recharges(self) -> list[dict]:
+        """
+        List all Nightly Recharge records (last 28 days).
+        GET /v3/users/{user-id}/nightly-recharge
+        """
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{POLAR_API_BASE}/users/{self._user_id}/nightly-recharge",
+                headers=self._headers(),
+            )
+            if r.status_code == 204:
+                return []
+            if r.status_code == 404:
+                return []
+            r.raise_for_status()
+            data = r.json()
+            return data.get("recharges", data if isinstance(data, list) else [])
 
 
 # Singleton — one instance shared across the app

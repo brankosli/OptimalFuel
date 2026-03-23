@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./optimalfuel.db"
+    db_echo: bool = False
 
     # Polar
     polar_client_id: str = ""

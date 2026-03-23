@@ -63,3 +63,15 @@ async def trigger_sync():
     from app.tasks.scheduler import sync_all
     asyncio.create_task(sync_all())
     return {"message": "Sync started in background"}
+
+
+@router.get("/debug/polar-sleep")
+async def debug_polar_sleep():
+    from app.services.polar.client import polar_client
+    import httpx
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            "https://www.polaraccesslink.com/v3/users/sleep",  # no user-id!
+            headers=polar_client._headers(),
+        )
+        return {"status_code": r.status_code, "body": r.text}

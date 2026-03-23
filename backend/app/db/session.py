@@ -5,7 +5,7 @@ from app.core.config import settings
 
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.is_development,   # logs SQL in dev
+    echo=settings.db_echo,
     connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
 )
 
@@ -37,5 +37,5 @@ async def init_db():
     """Create all tables on startup."""
     async with engine.begin() as conn:
         # Import models here so Base.metadata is populated
-        from app.models import activity, sleep, nutrition, token  # noqa: F401
+        from app.models import models  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
