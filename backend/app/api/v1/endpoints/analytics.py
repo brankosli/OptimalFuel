@@ -55,14 +55,12 @@ async def today_summary(db: AsyncSession = Depends(get_db)):
         "total_activity_seconds": row.total_activity_seconds,
     }
 
-
 @router.post("/sync")
 async def trigger_sync():
     """Manually kick off a full sync + analytics recompute."""
-    import asyncio
     from app.tasks.scheduler import sync_all
-    asyncio.create_task(sync_all())
-    return {"message": "Sync started in background"}
+    await sync_all()
+    return {"message": "Sync complete"}
 
 
 @router.get("/debug/polar-sleep")
@@ -75,3 +73,22 @@ async def debug_polar_sleep():
             headers=polar_client._headers(),
         )
         return {"status_code": r.status_code, "body": r.text}
+
+@router.get("/debug/polar-check")
+async def debug_polar_check():
+    from app.services.polar.client import polar_client
+    import httpx
+
+    return {
+        "has_token": bool(polar_client._access_token),
+        "has_user_id": bool(polar_client._user_id),
+        "token_preview": polar_client._access_token[:10] + "..." if polar_client._access_token else None,
+    }
+
+@router.get("/debug/polar-sleep-raw")
+async def debug_polar_sleep_raw():
+    from app.services.polar.client import polar_client
+    nights = await polar_client.get_sleep()
+    if nights:
+        return {"count": len(nights), "first_record": nights[0]}
+    return {"count": 0, "first_record": None}
