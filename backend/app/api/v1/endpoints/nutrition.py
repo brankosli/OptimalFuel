@@ -1,6 +1,6 @@
-from datetime import date
+import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -22,9 +22,12 @@ class MealCreate(BaseModel):
 
 
 @router.get("/meals")
-async def get_meals(log_date: str, db: AsyncSession = Depends(get_db)):
+async def get_meals(
+    date: str = Query(..., description="Date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_db)
+):
     try:
-        d = date.fromisoformat(log_date)
+        d = datetime.date.fromisoformat(date)
     except ValueError:
         raise HTTPException(400, "Invalid date format — use YYYY-MM-DD")
 
@@ -42,7 +45,7 @@ async def get_meals(log_date: str, db: AsyncSession = Depends(get_db)):
 @router.post("/meals", status_code=201)
 async def log_meal(meal: MealCreate, db: AsyncSession = Depends(get_db)):
     try:
-        d = date.fromisoformat(meal.log_date)
+        d = datetime.date.fromisoformat(meal.log_date)
     except ValueError:
         raise HTTPException(400, "Invalid date")
 
