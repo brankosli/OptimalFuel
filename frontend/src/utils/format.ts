@@ -1,6 +1,7 @@
-// ─── Formatting ───────────────────────────────────────────────────────────────
+// ─── Duration & distance ──────────────────────────────────────────────────────
 
-export function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number | null | undefined): string {
+  if (!seconds) return '—'
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   if (h > 0) return `${h}h ${m}m`
@@ -33,7 +34,7 @@ export function formatCalories(cal: number | null | undefined): string {
   return `${Math.round(cal)} kcal`
 }
 
-// ─── TSB / readiness colour coding ────────────────────────────────────────────
+// ─── TSB / readiness colours ──────────────────────────────────────────────────
 
 export function tsbColor(tsb: number | null | undefined): string {
   if (tsb == null) return 'var(--text-muted)'
@@ -62,6 +63,77 @@ export function readinessBg(label: string | null | undefined): string {
   }
 }
 
+// ─── Recovery classification colours ─────────────────────────────────────────
+
+export function recoveryClassColor(cls: string | null | undefined): string {
+  switch (cls) {
+    case 'peak':         return 'var(--accent)'
+    case 'high':         return 'var(--positive)'
+    case 'fresh_tired':  return '#a3e635'   // lime
+    case 'moderate':     return 'var(--warning)'
+    case 'caution':      return '#fb923c'   // orange
+    case 'low':          return 'var(--negative)'
+    case 'overreach':    return '#ef4444'   // red
+    default:             return 'var(--text-muted)'
+  }
+}
+
+export function recoveryClassBg(cls: string | null | undefined): string {
+  switch (cls) {
+    case 'peak':         return 'rgba(232,255,71,0.12)'
+    case 'high':         return 'rgba(74,222,128,0.10)'
+    case 'fresh_tired':  return 'rgba(163,230,53,0.10)'
+    case 'moderate':     return 'rgba(251,191,36,0.10)'
+    case 'caution':      return 'rgba(251,146,60,0.10)'
+    case 'low':          return 'rgba(248,113,113,0.10)'
+    case 'overreach':    return 'rgba(239,68,68,0.15)'
+    default:             return 'var(--bg-elevated)'
+  }
+}
+
+export function recoveryClassLabel(cls: string | null | undefined): string {
+  switch (cls) {
+    case 'peak':        return 'Peak'
+    case 'high':        return 'High'
+    case 'fresh_tired': return 'Fresh / Tired'
+    case 'moderate':    return 'Moderate'
+    case 'caution':     return 'Caution'
+    case 'low':         return 'Low'
+    case 'overreach':   return 'Overreach Risk'
+    default:            return '—'
+  }
+}
+
+// ─── Sleep quality colours ────────────────────────────────────────────────────
+
+export function sleepQualityColor(score: number | null | undefined): string {
+  if (score == null) return 'var(--text-muted)'
+  if (score >= 75) return 'var(--positive)'
+  if (score >= 55) return 'var(--warning)'
+  return 'var(--negative)'
+}
+
+export function hrDipColor(dip: number | null | undefined): string {
+  if (dip == null) return 'var(--text-muted)'
+  if (dip >= 10) return 'var(--positive)'   // healthy dip
+  if (dip >= 8)  return 'var(--warning)'    // borderline
+  return 'var(--negative)'                   // non-dipping = stress signal
+}
+
+export function hrDipLabel(dip: number | null | undefined): string {
+  if (dip == null) return '—'
+  if (dip >= 10) return 'Healthy dip'
+  if (dip >= 8)  return 'Borderline'
+  return 'Non-dipping ⚠️'
+}
+
+export function deepPctColor(pct: number | null | undefined): string {
+  if (pct == null) return 'var(--text-muted)'
+  if (pct >= 15) return 'var(--positive)'
+  if (pct >= 10) return 'var(--warning)'
+  return 'var(--negative)'
+}
+
 // ─── Sport icons ──────────────────────────────────────────────────────────────
 
 export function sportIcon(sport: string): string {
@@ -73,7 +145,7 @@ export function sportIcon(sport: string): string {
   return icons[sport?.toLowerCase()] ?? '🏅'
 }
 
-// ─── Carb strategy label ──────────────────────────────────────────────────────
+// ─── Carb strategy ────────────────────────────────────────────────────────────
 
 export function carbStrategyLabel(strategy: string | null | undefined): string {
   switch (strategy) {

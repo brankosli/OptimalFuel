@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authApi } from '@/utils/api'
 import { format, subDays } from 'date-fns'
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
 export function useAuthStatus() {
   return useQuery({
     queryKey: ['auth-status'],
@@ -10,16 +9,14 @@ export function useAuthStatus() {
   })
 }
 
-// ─── Today's summary ──────────────────────────────────────────────────────────
 export function useTodaySummary() {
   return useQuery({
     queryKey: ['analytics', 'today'],
     queryFn: () => analyticsApi.today().then(r => r.data),
-    refetchInterval: 1000 * 60 * 10,  // re-fetch every 10 min
+    refetchInterval: 1000 * 60 * 10,
   })
 }
 
-// ─── PMC chart data ───────────────────────────────────────────────────────────
 export function usePMC(days: number = 90) {
   const from = format(subDays(new Date(), days), 'yyyy-MM-dd')
   const to   = format(new Date(), 'yyyy-MM-dd')
@@ -29,7 +26,6 @@ export function usePMC(days: number = 90) {
   })
 }
 
-// ─── Activities ───────────────────────────────────────────────────────────────
 export function useActivities(days: number = 30) {
   const from = format(subDays(new Date(), days), 'yyyy-MM-dd')
   const to   = format(new Date(), 'yyyy-MM-dd')
@@ -39,7 +35,6 @@ export function useActivities(days: number = 30) {
   })
 }
 
-// ─── Sleep ────────────────────────────────────────────────────────────────────
 export function useSleep(days: number = 30) {
   const from = format(subDays(new Date(), days), 'yyyy-MM-dd')
   const to   = format(new Date(), 'yyyy-MM-dd')
@@ -49,7 +44,15 @@ export function useSleep(days: number = 30) {
   })
 }
 
-// ─── Nutrition ────────────────────────────────────────────────────────────────
+export function useSleepInsights(days: number = 30) {
+  const from = format(subDays(new Date(), days), 'yyyy-MM-dd')
+  const to   = format(new Date(), 'yyyy-MM-dd')
+  return useQuery({
+    queryKey: ['sleep-insights', days],
+    queryFn: () => analyticsApi.sleepInsights({ from, to }).then(r => r.data),
+  })
+}
+
 export function useMeals(date: string) {
   return useQuery({
     queryKey: ['meals', date],
@@ -73,7 +76,6 @@ export function useDeleteMeal() {
   })
 }
 
-// ─── Profile ──────────────────────────────────────────────────────────────────
 export function useProfile() {
   return useQuery({
     queryKey: ['profile'],
@@ -89,14 +91,5 @@ export function useUpdateProfile() {
       qc.invalidateQueries({ queryKey: ['profile'] })
       qc.invalidateQueries({ queryKey: ['analytics'] })
     },
-  })
-}
-
-// ─── Manual sync ──────────────────────────────────────────────────────────────
-export function useTriggerSync() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => analyticsApi.summaries().then(r => r.data),   // placeholder
-    onSuccess: () => qc.invalidateQueries(),
   })
 }

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
-from app.models.models import DailySummary
+from app.models.models import DailySummary, SleepRecord
 
 router = APIRouter()
 
@@ -29,14 +29,7 @@ async def list_summaries(
         .where(DailySummary.summary_date >= start, DailySummary.summary_date <= end)
         .order_by(DailySummary.summary_date)
     ))
-    return [
-        {"date": s.summary_date.isoformat(), "ctl": s.ctl, "atl": s.atl, "tsb": s.tsb,
-         "total_tss": s.total_tss, "recovery_score": s.recovery_score,
-         "readiness_label": s.readiness_label, "target_calories": s.target_calories,
-         "target_carbs_g": s.target_carbs_g, "target_protein_g": s.target_protein_g,
-         "target_fat_g": s.target_fat_g, "carb_strategy": s.carb_strategy}
-        for s in rows
-    ]
+    return [_summary_dict(s) for s in rows]
 
 
 @router.get("/today")
@@ -45,15 +38,76 @@ async def today_summary(db: AsyncSession = Depends(get_db)):
     row = await db.scalar(select(DailySummary).where(DailySummary.summary_date == today))
     if not row:
         return {"message": "No data yet — trigger a sync first", "date": today.isoformat()}
+    return _summary_dict(row)
+
+
+@router.get("/sleep-insights")
+async def sleep_insights(
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date: Optional[str] = Query(None, alias="to"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Detailed sleep analytics — quality scores, stage %, HR dip trend, sleep debt.
+    Used by the enhanced Sleep page.
+    """
+    end = date.today()
+    start = end - timedelta(days=30)
+    if from_date:
+        try: start = date.fromisoformat(from_date)
+        except ValueError: pass
+    if to_date:
+        try: end = date.fromisoformat(to_date)
+        except ValueError: pass
+
+    rows = list(await db.scalars(
+        select(SleepRecord)
+        .where(SleepRecord.sleep_date >= start, SleepRecord.sleep_date <= end)
+        .order_by(SleepRecord.sleep_date)
+    ))
+
+    records = []
+    for s in rows:
+        records.append({
+            "date":                    s.sleep_date.isoformat(),
+            "sleep_score":             s.sleep_score,
+            "sleep_quality_composite": s.sleep_quality_composite,
+            "total_hours":             round(s.total_sleep_seconds / 3600, 2) if s.total_sleep_seconds else None,
+            "deep_pct":                s.deep_pct,
+            "rem_pct":                 s.rem_pct,
+            "light_pct":               s.light_pct,
+            "deep_sleep_deficit":      s.deep_sleep_deficit,
+            "continuity":              s.continuity,
+            "sleep_cycles":            s.sleep_cycles,
+            "resting_hr":              s.resting_hr,
+            "nocturnal_hr_min":        s.nocturnal_hr_min,
+            "nocturnal_hr_dip":        s.nocturnal_hr_dip,
+            "sleep_charge":            s.sleep_charge,
+            "total_interruption_min":  round(s.total_interruption_duration / 60) if s.total_interruption_duration else None,
+        })
+
+    # Period aggregates
+    valid = [r for r in records if r["total_hours"]]
+    avg_quality = _avg([r["sleep_quality_composite"] for r in records])
+    avg_deep    = _avg([r["deep_pct"] for r in records])
+    avg_rem     = _avg([r["rem_pct"] for r in records])
+    avg_hours   = _avg([r["total_hours"] for r in valid])
+    avg_hr_dip  = _avg([r["nocturnal_hr_dip"] for r in records])
+    deficit_days = sum(1 for r in records if r["deep_sleep_deficit"])
+
     return {
-        "date": row.summary_date.isoformat(), "ctl": row.ctl, "atl": row.atl, "tsb": row.tsb,
-        "total_tss": row.total_tss, "recovery_score": row.recovery_score,
-        "readiness_label": row.readiness_label, "target_calories": row.target_calories,
-        "target_carbs_g": row.target_carbs_g, "target_protein_g": row.target_protein_g,
-        "target_fat_g": row.target_fat_g, "carb_strategy": row.carb_strategy,
-        "total_calories_burned": row.total_calories_burned,
-        "total_activity_seconds": row.total_activity_seconds,
+        "records": records,
+        "aggregates": {
+            "avg_quality_score":  round(avg_quality, 1) if avg_quality else None,
+            "avg_deep_pct":       round(avg_deep, 1) if avg_deep else None,
+            "avg_rem_pct":        round(avg_rem, 1) if avg_rem else None,
+            "avg_hours":          round(avg_hours, 1) if avg_hours else None,
+            "avg_nocturnal_hr_dip": round(avg_hr_dip, 1) if avg_hr_dip else None,
+            "deep_deficit_days":  deficit_days,
+            "deep_deficit_pct":   round(deficit_days / len(records) * 100) if records else 0,
+        }
     }
+
 
 @router.post("/sync")
 async def trigger_sync():
@@ -63,32 +117,35 @@ async def trigger_sync():
     return {"message": "Sync complete"}
 
 
-@router.get("/debug/polar-sleep")
-async def debug_polar_sleep():
-    from app.services.polar.client import polar_client
-    import httpx
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            "https://www.polaraccesslink.com/v3/users/sleep",  # no user-id!
-            headers=polar_client._headers(),
-        )
-        return {"status_code": r.status_code, "body": r.text}
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
-@router.get("/debug/polar-check")
-async def debug_polar_check():
-    from app.services.polar.client import polar_client
-    import httpx
-
+def _summary_dict(s: DailySummary) -> dict:
     return {
-        "has_token": bool(polar_client._access_token),
-        "has_user_id": bool(polar_client._user_id),
-        "token_preview": polar_client._access_token[:10] + "..." if polar_client._access_token else None,
+        "date":                    s.summary_date.isoformat(),
+        "ctl":                     s.ctl,
+        "atl":                     s.atl,
+        "tsb":                     s.tsb,
+        "total_tss":               s.total_tss,
+        "recovery_score":          s.recovery_score,
+        "readiness_label":         s.readiness_label,
+        "sleep_quality_composite": s.sleep_quality_composite,
+        "nocturnal_hr_dip":        s.nocturnal_hr_dip,
+        "deep_sleep_deficit":      s.deep_sleep_deficit,
+        "sleep_debt_minutes":      s.sleep_debt_minutes,
+        "recovery_classification": s.recovery_classification,
+        "training_recommendation": s.training_recommendation,
+        "target_calories":         s.target_calories,
+        "target_carbs_g":          s.target_carbs_g,
+        "target_protein_g":        s.target_protein_g,
+        "target_fat_g":            s.target_fat_g,
+        "carb_strategy":           s.carb_strategy,
+        "total_calories_burned":   s.total_calories_burned,
+        "total_activity_seconds":  s.total_activity_seconds,
     }
 
-@router.get("/debug/polar-sleep-raw")
-async def debug_polar_sleep_raw():
-    from app.services.polar.client import polar_client
-    nights = await polar_client.get_sleep()
-    if nights:
-        return {"count": len(nights), "first_record": nights[0]}
-    return {"count": 0, "first_record": None}
+
+def _avg(values: list) -> float | None:
+    valid = [v for v in values if v is not None]
+    if not valid:
+        return None
+    return sum(valid) / len(valid)
