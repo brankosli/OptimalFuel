@@ -1,6 +1,6 @@
 """
 Polar sync service.
-Pulls exercises, sleep and user profile from Polar Accesslink.
+Pulls exercises and sleep from Polar Accesslink.
 Computes analytics on each sleep record before storing.
 """
 import logging
@@ -40,15 +40,27 @@ def _compute_sleep_quality(
     rem_s: int,
     continuity: float | None,
 ) -> float | None:
+    """
+    Composite sleep quality score (0-100).
+
+    Weights (sports science literature):
+    - Deep sleep %   35% — physical recovery, GH secretion
+    - REM sleep %    20% — cognitive, motor learning
+    - Continuity     25% — fragmentation penalty
+    - Duration       20% — 7-9hr window
+    """
     if not total_s or total_s < 3600:
         return None
 
+    # Deep: target 15-20%
     deep_pct = deep_s / total_s if total_s else 0
     deep_score = min(deep_pct / 0.20 * 100, 100)
 
+    # REM: target 20-25%
     rem_pct = rem_s / total_s if total_s else 0
     rem_score = min(rem_pct / 0.25 * 100, 100)
 
+    # Duration: 7-9h = 100, 6h = 70, 5h = 40, <5h = 10
     hours = total_s / 3600
     if hours >= 7:
         duration_score = 100 if hours <= 9 else max(60, 100 - (hours - 9) * 20)
@@ -59,14 +71,15 @@ def _compute_sleep_quality(
     else:
         duration_score = 10
 
+    # Continuity: Polar 0-5 scale, 5=best
     cont = continuity if continuity is not None else 2.5
     continuity_score = (cont / 5.0) * 100
 
     composite = (
-        deep_score       * 0.35 +
-        rem_score        * 0.20 +
+        deep_score     * 0.35 +
+        rem_score      * 0.20 +
         continuity_score * 0.25 +
-        duration_score   * 0.20
+        duration_score * 0.20
     )
     return round(composite, 1)
 
@@ -75,11 +88,19 @@ def _compute_nocturnal_hr_dip(
     hr_samples: dict | None,
     resting_hr: int | None,
 ) -> tuple[int | None, float | None]:
+    """
+    Compute nocturnal HR minimum and dip percentage.
+
+    Healthy dip: 10-20%. Non-dipping (<8%) signals sympathetic stress.
+    Returns: (min_hr, dip_pct)
+    """
     if not hr_samples or not resting_hr or resting_hr <= 0:
         return None, None
+
     values = [v for v in hr_samples.values() if isinstance(v, (int, float)) and v > 20]
     if not values:
         return None, None
+
     min_hr = int(min(values))
     dip = (resting_hr - min_hr) / resting_hr * 100
     return min_hr, round(dip, 1)
@@ -100,103 +121,9 @@ async def sync_polar():
     if not polar_client.is_configured():
         print("Polar not configured — skipping")
         return
-    await _sync_user_profile()
     await _sync_exercises()
     await _sync_sleep()
 
-
-# ─── User profile ─────────────────────────────────────────────────────────────
-
-async def _sync_user_profile():
-    """
-    Pull user info + physical info from Polar and populate UserProfile.
-    Only fills empty fields — manual overrides in Settings are never overwritten.
-
-    Sources:
-    - get_user_info()     → weight, height, gender, birthdate
-    - get_physical_info() → VO2max, LTHR (anaerobic threshold HR)
-
-    FTP is not available from Polar — must be entered manually.
-    """
-    # ── Basic user info ───────────────────────────────────────────────────────
-    try:
-        info = await polar_client.get_user_info()
-    except Exception as e:
-        print(f"Polar user info fetch failed: {e}")
-        return
-
-    # ── Physical info (VO2max, LTHR) ─────────────────────────────────────────
-    physical = None
-    try:
-        physical_list = await polar_client.get_physical_info()
-        if physical_list:
-            physical = physical_list[-1]   # most recent entry
-            print(f"Polar: got physical info entry dated {physical.get('created', '?')}")
-    except Exception as e:
-        print(f"Polar physical info fetch failed (non-critical): {e}")
-
-    from app.models.models import UserProfile
-
-    async with AsyncSessionLocal() as session:
-        profile = await session.scalar(select(UserProfile).where(UserProfile.id == 1))
-        if not profile:
-            profile = UserProfile(id=1)
-            session.add(profile)
-
-        # ── From user info ────────────────────────────────────────────────────
-        if not profile.weight_kg and info.get("weight"):
-            profile.weight_kg = float(info["weight"])
-
-        if not profile.height_cm and info.get("height"):
-            profile.height_cm = float(info["height"])
-
-        if not profile.sex and info.get("gender"):
-            profile.sex = info["gender"].lower()   # Polar: "MALE" / "FEMALE"
-
-        if not profile.age and info.get("birthdate"):
-            try:
-                born = date.fromisoformat(info["birthdate"])
-                today = date.today()
-                profile.age = today.year - born.year - (
-                    (today.month, today.day) < (born.month, born.day)
-                )
-            except (ValueError, AttributeError):
-                pass
-
-        # ── From physical info ────────────────────────────────────────────────
-        if physical:
-            # VO2max
-            if not profile.vo2max:
-                vo2 = physical.get("vo2-max")
-                if vo2:
-                    try:
-                        profile.vo2max = float(vo2)
-                    except (TypeError, ValueError):
-                        pass
-
-            # LTHR — Polar stores as "anaerobic-threshold" heart rate
-            if not profile.lthr_bpm:
-                thresholds = physical.get("aerobic-and-anaerobic-thresholds")
-                if thresholds:
-                    anaerobic = thresholds.get("anaerobic-threshold", {})
-                    hr = anaerobic.get("heart-rate") if isinstance(anaerobic, dict) else None
-                    if hr:
-                        try:
-                            profile.lthr_bpm = int(hr)
-                        except (TypeError, ValueError):
-                            pass
-
-        await session.commit()
-        print(
-            f"Polar: profile synced — "
-            f"{info.get('first-name')} {info.get('last-name')} | "
-            f"{profile.weight_kg}kg {profile.height_cm}cm "
-            f"age {profile.age} {profile.sex} | "
-            f"VO2max {profile.vo2max} LTHR {profile.lthr_bpm}bpm"
-        )
-
-
-# ─── Exercises ────────────────────────────────────────────────────────────────
 
 async def _sync_exercises():
     try:
@@ -245,8 +172,6 @@ async def _sync_exercises():
             print(f"Polar: stored {new_count} new exercises")
 
 
-# ─── Sleep ────────────────────────────────────────────────────────────────────
-
 async def _sync_sleep():
     try:
         nights = await polar_client.get_sleep()
@@ -271,11 +196,12 @@ async def _sync_sleep():
 
             source_id = f"polar_sleep_{date_str}"
 
-            light  = night.get("light_sleep")
-            deep   = night.get("deep_sleep")
-            rem    = night.get("rem_sleep")
-            unrec  = night.get("unrecognized_sleep_stage", 0) or 0
-            total  = (light or 0) + (deep or 0) + (rem or 0) + unrec if any(
+            # Raw Polar fields (verified from live API)
+            light     = night.get("light_sleep")        # seconds
+            deep      = night.get("deep_sleep")         # seconds
+            rem       = night.get("rem_sleep")          # seconds
+            unrec     = night.get("unrecognized_sleep_stage", 0) or 0
+            total     = (light or 0) + (deep or 0) + (rem or 0) + unrec if any(
                 v is not None for v in [light, deep, rem]) else None
 
             continuity       = night.get("continuity")
@@ -285,6 +211,7 @@ async def _sync_sleep():
             sleep_charge     = night.get("sleep_charge")
             interruptions    = night.get("total_interruption_duration")
 
+            # Bedtime / wake
             bedtime = wake_time = None
             try:
                 if night.get("sleep_start_time"):
@@ -294,6 +221,7 @@ async def _sync_sleep():
             except (ValueError, AttributeError):
                 pass
 
+            # Computed metrics
             resting_hr = _avg_hr_from_samples(night.get("heart_rate_samples"))
             nocturnal_min, hr_dip = _compute_nocturnal_hr_dip(
                 night.get("heart_rate_samples"), resting_hr
@@ -303,7 +231,9 @@ async def _sync_sleep():
             rem_pct   = round(rem / total * 100, 1) if total and rem else None
             light_pct = round(light / total * 100, 1) if total and light else None
 
-            quality      = _compute_sleep_quality(total or 0, deep or 0, rem or 0, continuity)
+            quality = _compute_sleep_quality(
+                total or 0, deep or 0, rem or 0, continuity
+            )
             deep_deficit = (deep_pct < 15) if deep_pct is not None else None
 
             raw = {k: night[k] for k in (
@@ -346,7 +276,11 @@ async def _sync_sleep():
                     setattr(existing, k, v)
                 updated_count += 1
             else:
-                session.add(SleepRecord(source="polar", source_id=source_id, **fields))
+                session.add(SleepRecord(
+                    source="polar",
+                    source_id=source_id,
+                    **fields
+                ))
                 new_count += 1
 
         await session.commit()

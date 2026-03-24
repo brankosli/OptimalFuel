@@ -139,6 +139,10 @@ def _summary_dict(s: DailySummary) -> dict:
         "target_protein_g":        s.target_protein_g,
         "target_fat_g":            s.target_fat_g,
         "carb_strategy":           s.carb_strategy,
+        "acwr":                    s.acwr,
+        "training_monotony":       s.training_monotony,
+        "training_strain":         s.training_strain,
+        "training_strain":         s.training_strain,
         "total_calories_burned":   s.total_calories_burned,
         "total_activity_seconds":  s.total_activity_seconds,
     }

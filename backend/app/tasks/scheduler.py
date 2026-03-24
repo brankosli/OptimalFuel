@@ -1,6 +1,3 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from app.core.config import settings
 import logging
 logger = logging.getLogger(__name__)
 
@@ -15,8 +12,7 @@ async def sync_all():
         print("✅ Polar sync done")
     except Exception as e:
         print(f"❌ Polar sync failed: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
 
     try:
         from app.services.strava.sync import sync_strava
@@ -25,8 +21,16 @@ async def sync_all():
         print("✅ Strava sync done")
     except Exception as e:
         print(f"❌ Strava sync failed: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
+
+    try:
+        from app.services.analytics.dedup import dedup_activities
+        print("▶ Deduplicating activities...")
+        await dedup_activities()
+        print("✅ Dedup done")
+    except Exception as e:
+        print(f"❌ Dedup failed: {e}")
+        import traceback; traceback.print_exc()
 
     try:
         from app.services.analytics.pmc import recompute_daily_summaries
@@ -35,8 +39,7 @@ async def sync_all():
         print("✅ Analytics done")
     except Exception as e:
         print(f"❌ Analytics failed: {e}")
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
 
     print("🏁 sync_all finished")
 

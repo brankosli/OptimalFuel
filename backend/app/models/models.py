@@ -159,6 +159,11 @@ class DailySummary(Base):
     target_carbs_g: Mapped[Optional[float]] = mapped_column(Float)
     target_protein_g: Mapped[Optional[float]] = mapped_column(Float)
     target_fat_g: Mapped[Optional[float]] = mapped_column(Float)
+    # Load quality metrics
+    acwr: Mapped[Optional[float]] = mapped_column(Float)                    # ATL/CTL ratio
+    training_monotony: Mapped[Optional[float]] = mapped_column(Float)       # Foster 1998
+    training_strain: Mapped[Optional[float]] = mapped_column(Float)         # weekly load × monotony
+
     carb_strategy: Mapped[Optional[str]] = mapped_column(String(20))
 
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
