@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+import datetime as dt
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,13 +15,13 @@ async def list_summaries(
     to_date: Optional[str] = Query(None, alias="to"),
     db: AsyncSession = Depends(get_db),
 ):
-    end = date.today()
-    start = end - timedelta(days=90)
+    end = dt.date.today()
+    start = end - dt.timedelta(days=90)
     if from_date:
-        try: start = date.fromisoformat(from_date)
+        try: start = dt.date.fromisoformat(from_date)
         except ValueError: pass
     if to_date:
-        try: end = date.fromisoformat(to_date)
+        try: end = dt.date.fromisoformat(to_date)
         except ValueError: pass
 
     rows = list(await db.scalars(
@@ -34,7 +34,7 @@ async def list_summaries(
 
 @router.get("/today")
 async def today_summary(db: AsyncSession = Depends(get_db)):
-    today = date.today()
+    today = dt.date.today()
     row = await db.scalar(select(DailySummary).where(DailySummary.summary_date == today))
     if not row:
         return {"message": "No data yet — trigger a sync first", "date": today.isoformat()}
@@ -47,17 +47,13 @@ async def sleep_insights(
     to_date: Optional[str] = Query(None, alias="to"),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Detailed sleep analytics — quality scores, stage %, HR dip trend, sleep debt.
-    Used by the enhanced Sleep page.
-    """
-    end = date.today()
-    start = end - timedelta(days=30)
+    end = dt.date.today()
+    start = end - dt.timedelta(days=30)
     if from_date:
-        try: start = date.fromisoformat(from_date)
+        try: start = dt.date.fromisoformat(from_date)
         except ValueError: pass
     if to_date:
-        try: end = date.fromisoformat(to_date)
+        try: end = dt.date.fromisoformat(to_date)
         except ValueError: pass
 
     rows = list(await db.scalars(
@@ -66,55 +62,71 @@ async def sleep_insights(
         .order_by(SleepRecord.sleep_date)
     ))
 
-    records = []
-    for s in rows:
-        records.append({
-            "date":                    s.sleep_date.isoformat(),
-            "sleep_score":             s.sleep_score,
-            "sleep_quality_composite": s.sleep_quality_composite,
-            "total_hours":             round(s.total_sleep_seconds / 3600, 2) if s.total_sleep_seconds else None,
-            "deep_pct":                s.deep_pct,
-            "rem_pct":                 s.rem_pct,
-            "light_pct":               s.light_pct,
-            "deep_sleep_deficit":      s.deep_sleep_deficit,
-            "continuity":              s.continuity,
-            "sleep_cycles":            s.sleep_cycles,
-            "resting_hr":              s.resting_hr,
-            "nocturnal_hr_min":        s.nocturnal_hr_min,
-            "nocturnal_hr_dip":        s.nocturnal_hr_dip,
-            "sleep_charge":            s.sleep_charge,
-            "total_interruption_min":  round(s.total_interruption_duration / 60) if s.total_interruption_duration else None,
-        })
+    records = [{
+        "date":                    s.sleep_date.isoformat(),
+        "sleep_score":             s.sleep_score,
+        "sleep_quality_composite": s.sleep_quality_composite,
+        "total_hours":             round(s.total_sleep_seconds / 3600, 2) if s.total_sleep_seconds else None,
+        "deep_pct":                s.deep_pct,
+        "rem_pct":                 s.rem_pct,
+        "light_pct":               s.light_pct,
+        "deep_sleep_deficit":      s.deep_sleep_deficit,
+        "continuity":              s.continuity,
+        "sleep_cycles":            s.sleep_cycles,
+        "resting_hr":              s.resting_hr,
+        "nocturnal_hr_min":        s.nocturnal_hr_min,
+        "nocturnal_hr_dip":        s.nocturnal_hr_dip,
+        "sleep_charge":            s.sleep_charge,
+        "total_interruption_min":  round(s.total_interruption_duration / 60) if s.total_interruption_duration else None,
+    } for s in rows]
 
-    # Period aggregates
-    valid = [r for r in records if r["total_hours"]]
-    avg_quality = _avg([r["sleep_quality_composite"] for r in records])
-    avg_deep    = _avg([r["deep_pct"] for r in records])
-    avg_rem     = _avg([r["rem_pct"] for r in records])
-    avg_hours   = _avg([r["total_hours"] for r in valid])
-    avg_hr_dip  = _avg([r["nocturnal_hr_dip"] for r in records])
+    avg_quality  = _avg([r["sleep_quality_composite"] for r in records])
+    avg_deep     = _avg([r["deep_pct"] for r in records])
+    avg_rem      = _avg([r["rem_pct"] for r in records])
+    avg_hours    = _avg([r["total_hours"] for r in records if r["total_hours"]])
+    avg_hr_dip   = _avg([r["nocturnal_hr_dip"] for r in records])
     deficit_days = sum(1 for r in records if r["deep_sleep_deficit"])
 
     return {
         "records": records,
         "aggregates": {
-            "avg_quality_score":  round(avg_quality, 1) if avg_quality else None,
-            "avg_deep_pct":       round(avg_deep, 1) if avg_deep else None,
-            "avg_rem_pct":        round(avg_rem, 1) if avg_rem else None,
-            "avg_hours":          round(avg_hours, 1) if avg_hours else None,
-            "avg_nocturnal_hr_dip": round(avg_hr_dip, 1) if avg_hr_dip else None,
-            "deep_deficit_days":  deficit_days,
-            "deep_deficit_pct":   round(deficit_days / len(records) * 100) if records else 0,
+            "avg_quality_score":      round(avg_quality, 1) if avg_quality else None,
+            "avg_deep_pct":           round(avg_deep, 1) if avg_deep else None,
+            "avg_rem_pct":            round(avg_rem, 1) if avg_rem else None,
+            "avg_hours":              round(avg_hours, 1) if avg_hours else None,
+            "avg_nocturnal_hr_dip":   round(avg_hr_dip, 1) if avg_hr_dip else None,
+            "deep_deficit_days":      deficit_days,
+            "deep_deficit_pct":       round(deficit_days / len(records) * 100) if records else 0,
         }
     }
 
 
 @router.post("/sync")
 async def trigger_sync():
-    """Manually kick off a full sync + analytics recompute."""
     from app.tasks.scheduler import sync_all
     await sync_all()
     return {"message": "Sync complete"}
+
+
+# ─── Debug endpoints (keep until stable) ─────────────────────────────────────
+
+@router.get("/debug/polar-sleep-raw")
+async def debug_polar_sleep_raw():
+    from app.services.polar.client import polar_client
+    nights = await polar_client.get_sleep()
+    if nights:
+        return {"count": len(nights), "first_record": nights[0]}
+    return {"count": 0, "first_record": None}
+
+@router.get("/debug/polar-check")
+async def debug_polar_check():
+    from app.services.polar.client import polar_client
+    from app.core.config import settings
+    return {
+        "has_token":     bool(settings.polar_access_token),
+        "has_user_id":   bool(settings.polar_user_id),
+        "token_preview": settings.polar_access_token[:10] + "..." if settings.polar_access_token else None,
+    }
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -128,28 +140,24 @@ def _summary_dict(s: DailySummary) -> dict:
         "total_tss":               s.total_tss,
         "recovery_score":          s.recovery_score,
         "readiness_label":         s.readiness_label,
+        "recovery_classification": s.recovery_classification,
+        "training_recommendation": s.training_recommendation,
+        "acwr":                    s.acwr,
+        "training_monotony":       s.training_monotony,
+        "training_strain":         s.training_strain,
         "sleep_quality_composite": s.sleep_quality_composite,
         "nocturnal_hr_dip":        s.nocturnal_hr_dip,
         "deep_sleep_deficit":      s.deep_sleep_deficit,
         "sleep_debt_minutes":      s.sleep_debt_minutes,
-        "recovery_classification": s.recovery_classification,
-        "training_recommendation": s.training_recommendation,
         "target_calories":         s.target_calories,
         "target_carbs_g":          s.target_carbs_g,
         "target_protein_g":        s.target_protein_g,
         "target_fat_g":            s.target_fat_g,
         "carb_strategy":           s.carb_strategy,
-        "acwr":                    s.acwr,
-        "training_monotony":       s.training_monotony,
-        "training_strain":         s.training_strain,
-        "training_strain":         s.training_strain,
         "total_calories_burned":   s.total_calories_burned,
         "total_activity_seconds":  s.total_activity_seconds,
     }
 
-
-def _avg(values: list) -> float | None:
+def _avg(values):
     valid = [v for v in values if v is not None]
-    if not valid:
-        return None
-    return sum(valid) / len(valid)
+    return sum(valid) / len(valid) if valid else None

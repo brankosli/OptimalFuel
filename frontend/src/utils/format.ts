@@ -63,31 +63,31 @@ export function readinessBg(label: string | null | undefined): string {
   }
 }
 
-// ─── Recovery classification colours ─────────────────────────────────────────
+// ─── Recovery classification ──────────────────────────────────────────────────
 
 export function recoveryClassColor(cls: string | null | undefined): string {
   switch (cls) {
-    case 'peak':         return 'var(--accent)'
-    case 'high':         return 'var(--positive)'
-    case 'fresh_tired':  return '#a3e635'   // lime
-    case 'moderate':     return 'var(--warning)'
-    case 'caution':      return '#fb923c'   // orange
-    case 'low':          return 'var(--negative)'
-    case 'overreach':    return '#ef4444'   // red
-    default:             return 'var(--text-muted)'
+    case 'peak':        return 'var(--accent)'
+    case 'high':        return 'var(--positive)'
+    case 'fresh_tired': return '#a3e635'
+    case 'moderate':    return 'var(--warning)'
+    case 'caution':     return '#fb923c'
+    case 'low':         return 'var(--negative)'
+    case 'overreach':   return '#ef4444'
+    default:            return 'var(--text-muted)'
   }
 }
 
 export function recoveryClassBg(cls: string | null | undefined): string {
   switch (cls) {
-    case 'peak':         return 'rgba(232,255,71,0.12)'
-    case 'high':         return 'rgba(74,222,128,0.10)'
-    case 'fresh_tired':  return 'rgba(163,230,53,0.10)'
-    case 'moderate':     return 'rgba(251,191,36,0.10)'
-    case 'caution':      return 'rgba(251,146,60,0.10)'
-    case 'low':          return 'rgba(248,113,113,0.10)'
-    case 'overreach':    return 'rgba(239,68,68,0.15)'
-    default:             return 'var(--bg-elevated)'
+    case 'peak':        return 'rgba(232,255,71,0.12)'
+    case 'high':        return 'rgba(74,222,128,0.10)'
+    case 'fresh_tired': return 'rgba(163,230,53,0.10)'
+    case 'moderate':    return 'rgba(251,191,36,0.10)'
+    case 'caution':     return 'rgba(251,146,60,0.10)'
+    case 'low':         return 'rgba(248,113,113,0.10)'
+    case 'overreach':   return 'rgba(239,68,68,0.15)'
+    default:            return 'var(--bg-elevated)'
   }
 }
 
@@ -115,9 +115,9 @@ export function sleepQualityColor(score: number | null | undefined): string {
 
 export function hrDipColor(dip: number | null | undefined): string {
   if (dip == null) return 'var(--text-muted)'
-  if (dip >= 10) return 'var(--positive)'   // healthy dip
-  if (dip >= 8)  return 'var(--warning)'    // borderline
-  return 'var(--negative)'                   // non-dipping = stress signal
+  if (dip >= 10) return 'var(--positive)'
+  if (dip >= 8)  return 'var(--warning)'
+  return 'var(--negative)'
 }
 
 export function hrDipLabel(dip: number | null | undefined): string {
@@ -132,6 +132,39 @@ export function deepPctColor(pct: number | null | undefined): string {
   if (pct >= 15) return 'var(--positive)'
   if (pct >= 10) return 'var(--warning)'
   return 'var(--negative)'
+}
+
+// ─── ACWR ─────────────────────────────────────────────────────────────────────
+
+export function acwrColor(acwr: number | null | undefined): string {
+  if (acwr == null) return 'var(--text-muted)'
+  if (acwr > 1.5)  return '#ef4444'
+  if (acwr > 1.3)  return '#fb923c'
+  if (acwr >= 0.8) return 'var(--positive)'
+  return 'var(--info)'
+}
+
+export function acwrLabel(acwr: number | null | undefined): string {
+  if (acwr == null) return '—'
+  if (acwr > 1.5)  return 'Danger'
+  if (acwr > 1.3)  return 'Caution'
+  if (acwr >= 0.8) return 'Safe'
+  return 'Low'
+}
+
+export function acwrBg(acwr: number | null | undefined): string {
+  if (acwr == null) return 'var(--bg-elevated)'
+  if (acwr > 1.5)  return 'rgba(239,68,68,0.10)'
+  if (acwr > 1.3)  return 'rgba(251,146,60,0.10)'
+  if (acwr >= 0.8) return 'rgba(74,222,128,0.10)'
+  return 'rgba(96,165,250,0.10)'
+}
+
+export function monotonyColor(m: number | null | undefined): string {
+  if (m == null) return 'var(--text-muted)'
+  if (m > 2.0)  return 'var(--negative)'
+  if (m > 1.5)  return 'var(--warning)'
+  return 'var(--positive)'
 }
 
 // ─── Sport icons ──────────────────────────────────────────────────────────────

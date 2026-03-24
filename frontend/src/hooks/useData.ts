@@ -3,10 +3,7 @@ import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authAp
 import { format, subDays } from 'date-fns'
 
 export function useAuthStatus() {
-  return useQuery({
-    queryKey: ['auth-status'],
-    queryFn: () => authApi.status().then(r => r.data),
-  })
+  return useQuery({ queryKey: ['auth-status'], queryFn: () => authApi.status().then(r => r.data) })
 }
 
 export function useTodaySummary() {
@@ -54,10 +51,7 @@ export function useSleepInsights(days: number = 30) {
 }
 
 export function useMeals(date: string) {
-  return useQuery({
-    queryKey: ['meals', date],
-    queryFn: () => nutritionApi.meals(date).then(r => r.data),
-  })
+  return useQuery({ queryKey: ['meals', date], queryFn: () => nutritionApi.meals(date).then(r => r.data) })
 }
 
 export function useLogMeal() {
@@ -77,10 +71,7 @@ export function useDeleteMeal() {
 }
 
 export function useProfile() {
-  return useQuery({
-    queryKey: ['profile'],
-    queryFn: () => profileApi.get().then(r => r.data),
-  })
+  return useQuery({ queryKey: ['profile'], queryFn: () => profileApi.get().then(r => r.data) })
 }
 
 export function useUpdateProfile() {

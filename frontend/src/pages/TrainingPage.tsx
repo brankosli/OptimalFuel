@@ -1,83 +1,51 @@
 import { useState } from 'react'
 import { useActivities, usePMC } from '@/hooks/useData'
-import { formatDuration, formatDistance, formatPace, sportIcon, formatCalories } from '@/utils/format'
-import { format, parseISO, subDays } from 'date-fns'
+import { formatDuration, formatDistance, formatPace, sportIcon, formatCalories,
+         acwrColor, acwrLabel, acwrBg, monotonyColor } from '@/utils/format'
+import { format, parseISO } from 'date-fns'
 import {
-  ComposedChart, BarChart, Bar, Line, XAxis, YAxis, Tooltip,
+  BarChart, Bar, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts'
-
-// ─── ACWR helpers ─────────────────────────────────────────────────────────────
-
-function acwrColor(acwr: number | null | undefined): string {
-  if (acwr == null) return 'var(--text-muted)'
-  if (acwr > 1.5)  return '#ef4444'   // danger — red
-  if (acwr > 1.3)  return '#fb923c'   // caution — orange
-  if (acwr >= 0.8) return 'var(--positive)'  // safe — green
-  return 'var(--info)'                 // low — blue (detraining)
-}
-
-function acwrLabel(acwr: number | null | undefined): string {
-  if (acwr == null) return '—'
-  if (acwr > 1.5)  return 'Danger'
-  if (acwr > 1.3)  return 'Caution'
-  if (acwr >= 0.8) return 'Safe'
-  return 'Low'
-}
-
-function acwrBg(acwr: number | null | undefined): string {
-  if (acwr == null) return 'var(--bg-elevated)'
-  if (acwr > 1.5)  return 'rgba(239,68,68,0.10)'
-  if (acwr > 1.3)  return 'rgba(251,146,60,0.10)'
-  if (acwr >= 0.8) return 'rgba(74,222,128,0.10)'
-  return 'rgba(96,165,250,0.10)'
-}
-
-function monotonyColor(m: number | null | undefined): string {
-  if (m == null) return 'var(--text-muted)'
-  if (m > 2.0)  return 'var(--negative)'
-  if (m > 1.5)  return 'var(--warning)'
-  return 'var(--positive)'
-}
 
 export default function TrainingPage() {
   const [days, setDays] = useState(30)
   const { data: activities = [], isLoading } = useActivities(days)
   const { data: pmcData = [] } = usePMC(days)
 
-  // Latest PMC values for metric cards
-  const latest = pmcData.length ? pmcData[pmcData.length - 1] : null
-
-  // Weekly TSS for bar chart
+  const latest = pmcData.length ? pmcData[pmcData.length - 1] as any : null
   const weeklyTSS = buildWeeklyTSS(activities)
 
-  // ACWR trend from PMC data
-  const acwrTrend = pmcData
-    .filter((d: any) => d.acwr != null)
-    .map((d: any) => ({
+  // ACWR trend — one bar per day coloured by zone
+  const acwrTrend = (pmcData as any[])
+    .filter(d => d.acwr != null)
+    .map(d => ({
       date: d.date.slice(5),
       acwr: d.acwr,
-      fill: d.acwr > 1.3 ? '#ef4444' : d.acwr < 0.8 ? '#60a5fa' : '#4ade80',
+      fill: d.acwr > 1.5 ? '#ef4444' : d.acwr > 1.3 ? '#fb923c' : d.acwr >= 0.8 ? '#4ade80' : '#60a5fa',
     }))
+
+  const visibleActivities = activities.filter((a: any) => a.source !== 'polar_dedup')
+  const dedupCount = activities.filter((a: any) => a.source === 'polar_dedup').length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
 
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h1 style={{ fontSize: 20, fontWeight: 600 }}>Training</h1>
         <RangePicker value={days} onChange={setDays} />
       </div>
 
-      {/* ── Metric cards: ACWR + Monotony + Strain ──── */}
+      {/* ── Metric cards ─────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)' }}>
 
-        {/* ACWR card */}
+        {/* ACWR */}
         <div className="card" style={{
           background: acwrBg(latest?.acwr),
           borderColor: acwrColor(latest?.acwr),
         }}>
-          <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+          <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1,
+            color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
             ACWR — Injury Risk
           </p>
           <div style={{ fontSize: 36, fontWeight: 700, color: acwrColor(latest?.acwr), lineHeight: 1 }}>
@@ -94,7 +62,8 @@ export default function TrainingPage() {
 
         {/* Training Monotony */}
         <div className="card">
-          <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+          <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1,
+            color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
             Training Monotony
           </p>
           <div style={{ fontSize: 36, fontWeight: 700, color: monotonyColor(latest?.training_monotony), lineHeight: 1 }}>
@@ -108,40 +77,39 @@ export default function TrainingPage() {
           </div>
           <div style={{ marginTop: 'var(--space-4)', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.6 }}>
             Ideal: 1.0 – 1.5<br />
-            &gt;2.0 overtraining risk (Foster 1998)
+            &gt;2.0 = overtraining risk (Foster 1998)
           </div>
         </div>
 
-        {/* This week TSS + CTL */}
+        {/* CTL / ATL / TSB */}
         <div className="card">
-          <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
+          <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: 1,
+            color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
             Current Fitness (CTL)
           </p>
           <div style={{ fontSize: 36, fontWeight: 700, color: 'var(--positive)', lineHeight: 1 }}>
             {latest?.ctl?.toFixed(0) ?? '—'}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
-            Chronic Training Load
-          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>Chronic Training Load</div>
           <div style={{ marginTop: 'var(--space-4)', display: 'flex', gap: 'var(--space-4)' }}>
-            <SmallMetric label="ATL" value={latest?.atl?.toFixed(0) ?? '—'} color="var(--negative)" />
-            <SmallMetric label="TSB" value={latest?.tsb?.toFixed(0) ?? '—'}
+            <SmMetric label="ATL"    value={latest?.atl?.toFixed(0) ?? '—'} color="var(--negative)" />
+            <SmMetric label="TSB"    value={latest?.tsb?.toFixed(0) ?? '—'}
               color={latest?.tsb == null ? 'var(--text-muted)' : latest.tsb >= 0 ? 'var(--positive)' : 'var(--warning)'} />
-            <SmallMetric label="Strain" value={latest?.training_strain?.toFixed(0) ?? '—'} />
+            <SmMetric label="Strain" value={latest?.training_strain?.toFixed(0) ?? '—'} />
           </div>
         </div>
       </div>
 
-      {/* ── ACWR trend chart ─────────────────────────── */}
+      {/* ── ACWR trend chart ─────────────────────────────── */}
       {acwrTrend.length > 0 && (
         <div className="card">
           <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 4 }}>
-            Acute:Chronic Workload Ratio — injury risk trend
+            ACWR Trend — injury risk over time
           </p>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 'var(--space-5)' }}>
-            Green = safe (0.8-1.3) · Orange = caution (&gt;1.3) · Red = danger (&gt;1.5) · Blue = detraining (&lt;0.8)
+            🟢 Safe (0.8-1.3) · 🟠 Caution (&gt;1.3) · 🔴 Danger (&gt;1.5) · 🔵 Detraining (&lt;0.8)
           </p>
-          <ResponsiveContainer width="100%" height={160}>
+          <ResponsiveContainer width="100%" height={150}>
             <BarChart data={acwrTrend} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
               <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false}
@@ -153,28 +121,26 @@ export default function TrainingPage() {
                 label={{ value: '1.3', fill: '#fb923c', fontSize: 9, position: 'insideTopRight' }} />
               <ReferenceLine y={0.8} stroke="var(--info)" strokeDasharray="3 3"
                 label={{ value: '0.8', fill: 'var(--info)', fontSize: 9, position: 'insideBottomRight' }} />
-              <Bar dataKey="acwr" maxBarSize={12} radius={[2, 2, 0, 0]}>
-                {acwrTrend.map((entry: any, i: number) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
+              <Bar dataKey="acwr" maxBarSize={10} radius={[2, 2, 0, 0]}>
+                {acwrTrend.map((e: any, i: number) => <Cell key={i} fill={e.fill} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
 
-      {/* ── Weekly TSS bar chart ─────────────────────── */}
+      {/* ── Weekly TSS ───────────────────────────────────── */}
       <div className="card">
         <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 'var(--space-5)' }}>
           Weekly Training Load (TSS)
         </p>
         {weeklyTSS.length === 0 ? (
-          <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          <div style={{ height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: 'var(--text-muted)', fontSize: 13 }}>
             No TSS data — set your LTHR in Settings to calculate training stress scores
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={160}>
+          <ResponsiveContainer width="100%" height={150}>
             <BarChart data={weeklyTSS} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-border)" vertical={false} />
               <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -187,27 +153,25 @@ export default function TrainingPage() {
         )}
       </div>
 
-      {/* ── Activity list ────────────────────────────── */}
+      {/* ── Activity list ────────────────────────────────── */}
       <div>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
-          {activities.filter((a: any) => a.source !== 'polar_dedup').length} activities
-          {activities.some((a: any) => a.source === 'polar_dedup') && (
+          {visibleActivities.length} activities
+          {dedupCount > 0 && (
             <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 8 }}>
-              ({activities.filter((a: any) => a.source === 'polar_dedup').length} Polar duplicates hidden)
+              ({dedupCount} Polar duplicates hidden)
             </span>
           )}
         </p>
         {isLoading ? (
           <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</div>
-        ) : activities.filter((a: any) => a.source !== 'polar_dedup').length === 0 ? (
+        ) : visibleActivities.length === 0 ? (
           <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: 'var(--space-8)' }}>
             No activities found. Sync your data to get started.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {activities
-              .filter((a: any) => a.source !== 'polar_dedup')
-              .map((a: any) => <ActivityCard key={a.id} activity={a} />)}
+            {visibleActivities.map((a: any) => <ActivityCard key={a.id} activity={a} />)}
           </div>
         )}
       </div>
@@ -215,9 +179,7 @@ export default function TrainingPage() {
   )
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SmallMetric({ label, value, color }: any) {
+function SmMetric({ label, value, color }: any) {
   return (
     <div>
       <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
@@ -231,12 +193,8 @@ function SmallMetric({ label, value, color }: any) {
 function ActivityCard({ activity: a }: { activity: any }) {
   const isRun  = a.sport_type === 'run'
   const isRide = a.sport_type === 'ride'
-
   return (
-    <div className="card-sm" style={{
-      display: 'grid', gridTemplateColumns: '40px 1fr auto',
-      gap: 'var(--space-4)', alignItems: 'center',
-    }}>
+    <div className="card-sm" style={{ display: 'grid', gridTemplateColumns: '40px 1fr auto', gap: 'var(--space-4)', alignItems: 'center' }}>
       <div style={{ fontSize: 24, textAlign: 'center' }}>{sportIcon(a.sport_type)}</div>
       <div>
         <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -260,15 +218,11 @@ function ActivityCard({ activity: a }: { activity: any }) {
       </div>
       <div style={{ textAlign: 'right' }}>
         {a.tss != null ? (
-          <>
-            <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{a.tss}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>TSS</div>
-          </>
+          <><div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{a.tss}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>TSS</div></>
         ) : a.calories ? (
-          <>
-            <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{Math.round(a.calories)}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>kcal</div>
-          </>
+          <><div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{Math.round(a.calories)}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>kcal</div></>
         ) : null}
       </div>
     </div>
@@ -285,22 +239,19 @@ function RangePicker({ value, onChange }: { value: number; onChange: (n: number)
           background: value === n ? 'var(--accent-muted)' : 'var(--bg-elevated)',
           color: value === n ? 'var(--accent)' : 'var(--text-secondary)',
           transition: 'all 0.15s',
-        }}>
-          {n}d
-        </button>
+        }}>{n}d</button>
       ))}
     </div>
   )
 }
 
-function buildWeeklyTSS(activities: any[]): { week: string; tss: number }[] {
+function buildWeeklyTSS(activities: any[]) {
   const weeks: Record<string, number> = {}
   for (const a of activities) {
     if (!a.date || !a.tss || a.source === 'polar_dedup') continue
-    const weekStart = format(parseISO(a.date), "'W'w")
-    weeks[weekStart] = (weeks[weekStart] ?? 0) + a.tss
+    const w = format(parseISO(a.date), "'W'w")
+    weeks[w] = (weeks[w] ?? 0) + a.tss
   }
-  return Object.entries(weeks)
-    .sort(([a], [b]) => a.localeCompare(b))
+  return Object.entries(weeks).sort(([a], [b]) => a.localeCompare(b))
     .map(([week, tss]) => ({ week, tss: Math.round(tss) }))
 }

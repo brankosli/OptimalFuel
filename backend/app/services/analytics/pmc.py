@@ -1,25 +1,12 @@
 """
-Performance Management Chart (PMC) + Sleep + Load Analytics Engine.
+PMC + Sleep + Load Analytics Engine.
 
-Per-day metrics:
-  PMC:
-  - CTL  — Chronic Training Load (42-day EWA)  → Fitness
-  - ATL  — Acute Training Load (7-day EWA)     → Fatigue
-  - TSB  — CTL - ATL                           → Form
-
-  Load quality:
-  - ACWR              — ATL/CTL ratio (injury risk: safe 0.8-1.3)
-  - training_monotony — load consistency score (Foster 1998)
-  - training_strain   — weekly load × monotony
-
-  Sleep cross-analytics:
-  - sleep_quality_composite
-  - nocturnal_hr_dip
-  - deep_sleep_deficit
-  - sleep_debt_minutes (7-day rolling)
-
+Per-day:
+  PMC:     CTL, ATL, TSB
+  Load:    ACWR (injury risk), training_monotony, training_strain
+  Sleep:   sleep_quality_composite, nocturnal_hr_dip, deep_sleep_deficit, sleep_debt_minutes
   Recovery classification (TSB × Sleep matrix)
-  Training recommendation (plain language)
+  Nutrition targets
 """
 import logging
 from datetime import date, timedelta
@@ -31,17 +18,11 @@ from app.models.models import Activity, SleepRecord, DailySummary, UserProfile
 
 logger = logging.getLogger(__name__)
 
-# PMC constants
 CTL_DAYS  = 42
 ATL_DAYS  = 7
 CTL_DECAY = 1 - exp(-1 / CTL_DAYS)
 ATL_DECAY = 1 - exp(-1 / ATL_DAYS)
-
 SLEEP_TARGET_SECONDS = 8 * 3600
-
-# ACWR safe zone (Gabbett 2016)
-ACWR_LOW  = 0.8
-ACWR_HIGH = 1.3
 
 
 # ─── Nutrition ────────────────────────────────────────────────────────────────
@@ -65,7 +46,7 @@ def carb_strategy(tss, tsb):
     else:           return "moderate", 0.40, 0.35, 0.25
 
 
-# ─── Recovery scoring ─────────────────────────────────────────────────────────
+# ─── Recovery ─────────────────────────────────────────────────────────────────
 
 def recovery_score_simple(nightly_recharge, tsb):
     tsb_norm = min(max((tsb + 30) / 50 * 100, 0), 100)
@@ -75,35 +56,32 @@ def recovery_score_simple(nightly_recharge, tsb):
     elif score >= 35: return score, "moderate"
     else:             return score, "low"
 
-
 def classify_recovery(tsb, sleep_quality):
     sq_high    = sleep_quality is not None and sleep_quality >= 65
-    sq_low     = sleep_quality is not None and sleep_quality < 65
     sq_unknown = sleep_quality is None
 
     if tsb >= 10:
         if sq_high or sq_unknown:
             return "peak",        "Peak readiness — race, time trial, or key workout day"
         else:
-            return "fresh_tired", "Fresh but under-recovered sleep — quality session, avoid new max efforts"
+            return "fresh_tired", "Fresh but under-recovered sleep — quality session, avoid max efforts"
     elif tsb >= 0:
         if sq_high or sq_unknown:
             return "high",    "Well recovered — proceed with planned session"
         else:
-            return "caution", "Good form but poor sleep — reduce session intensity by 15-20%"
+            return "caution", "Good form but poor sleep — reduce intensity by 15-20%"
     elif tsb >= -15:
         if sq_high:
             return "moderate", "Building phase — body adapting, proceed with plan"
         elif sq_unknown:
             return "moderate", "Moderate fatigue — proceed with plan, monitor RPE"
         else:
-            return "caution",  "Fatigue + poor sleep — easy session, prioritise tonight's sleep"
+            return "caution",  "Fatigue + poor sleep — easy session, prioritise sleep tonight"
     else:
         if sq_high:
             return "low",       "High training debt — easy session or rest, recovery nutrition priority"
         else:
             return "overreach", "⚠️ High fatigue + poor sleep — rest day strongly recommended"
-
 
 def compute_sleep_debt(sleep_by_date, current_date, days=7):
     total = 0
@@ -114,76 +92,46 @@ def compute_sleep_debt(sleep_by_date, current_date, days=7):
     return round(total / 60)
 
 
-# ─── ACWR & Load quality ──────────────────────────────────────────────────────
+# ─── Load quality ─────────────────────────────────────────────────────────────
 
-def compute_acwr(atl: float, ctl: float) -> float | None:
-    """
-    Acute:Chronic Workload Ratio.
-    Safe zone: 0.8 - 1.3 (Gabbett 2016).
-    > 1.3 = injury risk zone (spike in load)
-    < 0.8 = detraining zone
-    """
+def compute_acwr(atl, ctl):
+    """ATL/CTL. Safe zone 0.8-1.3 (Gabbett 2016)."""
     if not ctl or ctl < 1:
         return None
     return round(atl / ctl, 3)
 
-
-def compute_training_monotony(daily_tss: dict, current_date: date, days: int = 7) -> float | None:
+def compute_training_monotony(daily_tss, current_date, days=7):
     """
-    Training Monotony (Foster 1998).
-    = weekly average TSS / standard deviation of daily TSS
-
-    High monotony (>2.0) means doing the same thing every day — 
-    predicts overtraining even when total load looks fine.
-    Ideal: 1.0-1.5 (varied training stimulus).
+    Foster 1998. Weekly mean / std dev.
+    >2.0 = overtraining risk even if total load is OK.
     """
-    values = []
-    for i in range(days):
-        d = current_date - timedelta(days=i)
-        values.append(daily_tss.get(d, 0.0))
-
+    values = [daily_tss.get(current_date - timedelta(days=i), 0.0) for i in range(days)]
     if not any(v > 0 for v in values):
         return None
-
     mean = sum(values) / len(values)
     if mean == 0:
         return None
-
     variance = sum((v - mean) ** 2 for v in values) / len(values)
     std = sqrt(variance)
-
     if std == 0:
-        return None   # all same value → infinite monotony, skip
-
+        return None
     return round(mean / std, 2)
 
-
-def compute_training_strain(daily_tss: dict, current_date: date, days: int = 7) -> float | None:
-    """
-    Training Strain (Foster 1998) = weekly load × monotony.
-    High strain (>5000) with high monotony = overtraining risk.
-    """
-    monotony = compute_training_monotony(daily_tss, current_date, days)
-    if monotony is None:
+def compute_training_strain(daily_tss, current_date, days=7):
+    """Weekly load × monotony."""
+    mono = compute_training_monotony(daily_tss, current_date, days)
+    if mono is None:
         return None
-
-    weekly_load = sum(daily_tss.get(current_date - timedelta(days=i), 0.0) for i in range(days))
-    return round(weekly_load * monotony, 1)
-
-
-def acwr_label(acwr: float | None) -> str:
-    if acwr is None:    return "unknown"
-    if acwr > 1.5:      return "danger"
-    if acwr > 1.3:      return "caution"
-    if acwr >= 0.8:     return "safe"
-    return "low"
+    weekly = sum(daily_tss.get(current_date - timedelta(days=i), 0.0) for i in range(days))
+    return round(weekly * mono, 1)
 
 
 # ─── Main recompute ───────────────────────────────────────────────────────────
 
 async def recompute_daily_summaries():
     async with AsyncSessionLocal() as session:
-        # Only use non-duplicate activities for load calculations
+
+        # Exclude polar_dedup activities from load calculations
         activities = list(await session.scalars(
             select(Activity)
             .where(Activity.source != "polar_dedup")
@@ -199,9 +147,9 @@ async def recompute_daily_summaries():
             print("PMC: no data found, skipping")
             return
 
-        daily_tss:      dict[date, float] = {}
-        daily_calories: dict[date, float] = {}
-        daily_seconds:  dict[date, int]   = {}
+        daily_tss:      dict = {}
+        daily_calories: dict = {}
+        daily_seconds:  dict = {}
 
         for act in activities:
             d = act.activity_date
@@ -227,32 +175,25 @@ async def recompute_daily_summaries():
             atl = atl + ATL_DECAY * (tss - atl)
             tsb = ctl - atl
 
-            # Sleep
-            sleep  = sleep_by_date.get(d)
-            sq     = sleep.sleep_quality_composite if sleep else None
-            hr_dip = sleep.nocturnal_hr_dip if sleep else None
-            deep_d = sleep.deep_sleep_deficit if sleep else None
+            sleep    = sleep_by_date.get(d)
+            sq       = sleep.sleep_quality_composite if sleep else None
+            hr_dip   = sleep.nocturnal_hr_dip if sleep else None
+            deep_d   = sleep.deep_sleep_deficit if sleep else None
             recharge = sleep.nightly_recharge_score if sleep else None
 
-            # Recovery
             rec_score, rec_label  = recovery_score_simple(recharge, tsb)
             rec_class, rec_recomm = classify_recovery(tsb, sq)
+            sleep_debt            = compute_sleep_debt(sleep_by_date, d)
 
-            # Sleep debt
-            sleep_debt = compute_sleep_debt(sleep_by_date, d)
-
-            # Load quality metrics
             acwr     = compute_acwr(atl, ctl)
             monotony = compute_training_monotony(daily_tss, d)
             strain   = compute_training_strain(daily_tss, d)
 
-            # Nutrition
             target_cal = target_carbs = target_protein = target_fat = None
             strategy = None
-
             if profile and profile.weight_kg and profile.height_cm and profile.age:
                 bmr        = compute_bmr(profile.weight_kg, profile.height_cm,
-                                         profile.age, profile.sex or "male")
+                                          profile.age, profile.sex or "male")
                 target_cal = round(bmr * activity_multiplier(tss))
                 strategy, cp, pp, fp = carb_strategy(tss, tsb)
                 target_carbs   = round(target_cal * cp / 4)
@@ -263,28 +204,25 @@ async def recompute_daily_summaries():
                     target_protein = min_prot
                     target_carbs   = max(0, round(target_carbs - (min_prot - target_protein) * 4 / 4))
 
-            # Upsert
             existing = await session.scalar(
                 select(DailySummary).where(DailySummary.summary_date == d)
             )
             vals = dict(
-                ctl=round(ctl, 2),
-                atl=round(atl, 2),
-                tsb=round(tsb, 2),
+                ctl=round(ctl, 2), atl=round(atl, 2), tsb=round(tsb, 2),
                 total_tss=round(tss, 1),
                 total_calories_burned=round(daily_calories.get(d, 0.0)),
                 total_activity_seconds=daily_seconds.get(d, 0),
                 recovery_score=rec_score,
                 readiness_label=rec_label,
-                sleep_quality_composite=sq,
-                nocturnal_hr_dip=hr_dip,
-                deep_sleep_deficit=deep_d,
-                sleep_debt_minutes=sleep_debt,
                 recovery_classification=rec_class,
                 training_recommendation=rec_recomm,
                 acwr=acwr,
                 training_monotony=monotony,
                 training_strain=strain,
+                sleep_quality_composite=sq,
+                nocturnal_hr_dip=hr_dip,
+                deep_sleep_deficit=deep_d,
+                sleep_debt_minutes=sleep_debt,
                 target_calories=target_cal,
                 target_carbs_g=target_carbs,
                 target_protein_g=target_protein,
