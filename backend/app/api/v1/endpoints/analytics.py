@@ -209,3 +209,103 @@ def _summary_dict(s: DailySummary) -> dict:
 def _avg(values):
     valid = [v for v in values if v is not None]
     return sum(valid) / len(valid) if valid else None
+
+
+@router.get("/weekly-report")
+async def weekly_report(
+    week_offset: int = Query(0, description="0 = current week, -1 = last week, etc."),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate weekly training report for any given week.
+    week_offset=0 → current week (Mon–Sun)
+    week_offset=-1 → last week
+    """
+    from app.services.analytics.weekly_report import generate_weekly_report
+
+    today = dt.date.today()
+    # Find Monday of the target week
+    days_since_monday = today.weekday()
+    this_monday = today - dt.timedelta(days=days_since_monday)
+    week_start = this_monday + dt.timedelta(weeks=week_offset)
+    week_end   = week_start + dt.timedelta(days=6)
+
+    prev_start = week_start - dt.timedelta(weeks=1)
+    prev_end   = prev_start + dt.timedelta(days=6)
+
+    # Load DailySummary rows
+    week_rows = list(await db.scalars(
+        select(DailySummary)
+        .where(DailySummary.summary_date >= week_start,
+               DailySummary.summary_date <= week_end)
+        .order_by(DailySummary.summary_date)
+    ))
+    prev_rows = list(await db.scalars(
+        select(DailySummary)
+        .where(DailySummary.summary_date >= prev_start,
+               DailySummary.summary_date <= prev_end)
+        .order_by(DailySummary.summary_date)
+    ))
+
+    # Load activities for the week
+    week_acts = list(await db.scalars(
+        select(Activity)
+        .where(
+            Activity.activity_date >= week_start,
+            Activity.activity_date <= week_end,
+            Activity.source.notin_(["polar_dedup", "strava_dedup"]),
+        )
+        .order_by(Activity.activity_date)
+    ))
+
+    # Load sleep for the week
+    week_sleep = list(await db.scalars(
+        select(SleepRecord)
+        .where(SleepRecord.sleep_date >= week_start,
+               SleepRecord.sleep_date <= week_end)
+        .order_by(SleepRecord.sleep_date)
+    ))
+
+    # Load profile
+    profile = await db.scalar(select(UserProfile).where(UserProfile.id == 1))
+
+    def summary_to_dict(s):
+        return {
+            "total_tss":          s.total_tss,
+            "ctl":                s.ctl,
+            "atl":                s.atl,
+            "tsb":                s.tsb,
+            "acwr":               s.acwr,
+            "training_monotony":  s.training_monotony,
+            "sleep_quality_composite": s.sleep_quality_composite,
+            "sleep_debt_minutes": s.sleep_debt_minutes,
+        }
+
+    def act_to_dict(a):
+        return {
+            "sport_type":       a.sport_type,
+            "duration_seconds": a.duration_seconds,
+            "tss":              a.tss,
+            "avg_heart_rate":   a.avg_heart_rate,
+        }
+
+    def sleep_to_dict(s):
+        return {
+            "sleep_quality_composite": s.sleep_quality_composite,
+            "total_sleep_seconds":     s.total_sleep_seconds,
+            "deep_sleep_deficit":      s.deep_sleep_deficit,
+            "nocturnal_hr_dip":        s.nocturnal_hr_dip,
+        }
+
+    report = generate_weekly_report(
+        week_summaries  = [summary_to_dict(s) for s in week_rows],
+        prev_summaries  = [summary_to_dict(s) for s in prev_rows],
+        week_activities = [act_to_dict(a) for a in week_acts],
+        week_sleep      = [sleep_to_dict(s) for s in week_sleep],
+        week_start      = week_start,
+        week_end        = week_end,
+        lthr            = profile.lthr_bpm if profile else None,
+        ftp             = profile.ftp_watts if profile else None,
+    )
+
+    return report

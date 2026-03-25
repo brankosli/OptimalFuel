@@ -84,3 +84,10 @@ export function useUpdateProfile() {
     },
   })
 }
+
+export function useWeeklyReport(weekOffset: number = 0) {
+  return useQuery({
+    queryKey: ['weekly-report', weekOffset],
+    queryFn: () => analyticsApi.weeklyReport(weekOffset).then(r => r.data),
+  })
+}

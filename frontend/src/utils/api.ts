@@ -25,6 +25,8 @@ export const analyticsApi = {
   summaries: (params?: { from?: string; to?: string }) =>
     api.get('/api/v1/analytics/', { params }),
   today: () => api.get('/api/v1/analytics/today'),
+  weeklyReport: (weekOffset: number) =>
+    api.get('/api/v1/analytics/weekly-report', { params: { week_offset: weekOffset } }),
   sleepInsights: (params?: { from?: string; to?: string }) =>
     api.get('/api/v1/analytics/sleep-insights', { params }),
 }

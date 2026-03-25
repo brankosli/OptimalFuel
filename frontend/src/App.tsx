@@ -5,6 +5,7 @@ import TrainingPage from '@/pages/TrainingPage'
 import SleepPage from '@/pages/SleepPage'
 import NutritionPage from '@/pages/NutritionPage'
 import SettingsPage from '@/pages/SettingsPage'
+import ReportPage from '@/pages/ReportPage'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="sleep"      element={<SleepPage />} />
           <Route path="nutrition"  element={<NutritionPage />} />
           <Route path="settings"   element={<SettingsPage />} />
+          <Route path="report"     element={<ReportPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
