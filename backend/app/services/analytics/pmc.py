@@ -134,7 +134,7 @@ async def recompute_daily_summaries():
         # Exclude polar_dedup activities from load calculations
         activities = list(await session.scalars(
             select(Activity)
-            .where(Activity.source != "polar_dedup")
+            .where(Activity.source.notin_(["polar_dedup", "strava_dedup"]))
             .order_by(Activity.activity_date)
         ))
         sleep_records = list(await session.scalars(

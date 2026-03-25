@@ -1,7 +1,7 @@
 """
 Strava sync service.
-Pulls new activities from Strava API, computes TSS where possible,
-and stores as normalised Activity rows.
+Pulls new activities, computes TSS, and backfills TSS
+for existing activities that have null TSS.
 """
 import logging
 from datetime import datetime, timezone
@@ -12,8 +12,6 @@ from app.models.models import Activity, UserProfile
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
-
-# ─── Sport type normalisation ─────────────────────────────────────────────────
 
 SPORT_MAP = {
     "Run": "run", "TrailRun": "run", "VirtualRun": "run",
@@ -31,58 +29,41 @@ def _map_sport(strava_type: str) -> str:
 
 # ─── TSS Calculation ──────────────────────────────────────────────────────────
 
-def compute_tss_from_power(
-    duration_seconds: int,
-    normalized_power: float,
-    ftp: float,
-) -> float:
-    """
-    Training Stress Score from power data.
-    TSS = (duration_s * NP * IF) / (FTP * 3600) * 100
-    where IF = NP / FTP (Intensity Factor)
-    """
+def compute_tss_from_power(duration_seconds: int, normalized_power: float, ftp: float) -> float:
     if not ftp or not normalized_power or duration_seconds <= 0:
         return 0.0
     intensity_factor = normalized_power / ftp
     return (duration_seconds * normalized_power * intensity_factor) / (ftp * 3600) * 100
 
 
-def compute_tss_from_hr(
-    duration_seconds: int,
-    avg_hr: int,
-    lthr: int,
-    hr_rest: int = 50,
-) -> float:
-    """
-    HR-based TSS approximation (hrTSS).
-    Uses TRIMP approach scaled to TSS range.
-    Less accurate than power-based but works for all sports.
-
-    Formula based on Banister's TRIMP with gender-neutral coefficient.
-    """
+def compute_tss_from_hr(duration_seconds: int, avg_hr: int, lthr: int, hr_rest: int = 50) -> float:
     if not lthr or not avg_hr or duration_seconds <= 0:
         return 0.0
-
     hr_reserve_ratio = (avg_hr - hr_rest) / (lthr - hr_rest)
-    hr_reserve_ratio = max(0.0, min(hr_reserve_ratio, 1.5))   # clamp
-
-    # TRIMP with exponential weighting (gender-neutral ~1.67)
+    hr_reserve_ratio = max(0.0, min(hr_reserve_ratio, 1.5))
     trimp = (duration_seconds / 60) * hr_reserve_ratio * 0.64 * (2.718 ** (1.92 * hr_reserve_ratio))
+    trimp_at_lthr_1hr = 60 * 1.0 * 0.64 * (2.718 ** 1.92)
+    return trimp * (100 / trimp_at_lthr_1hr)
 
-    # Scale TRIMP to approximate TSS (1 hr at LTHR ≈ 100 TSS)
-    trimp_at_lthr_1hr = 60 * 1.0 * 0.64 * (2.718 ** 1.92)   # ≈ 73
-    tss_per_trimp = 100 / trimp_at_lthr_1hr
-    return trimp * tss_per_trimp
+
+def _calc_tss(duration, avg_hr, np_watts, avg_watts, ftp, lthr):
+    if np_watts and ftp:
+        return compute_tss_from_power(duration, np_watts, ftp)
+    if avg_watts and ftp:
+        return compute_tss_from_power(duration, avg_watts, ftp)
+    if avg_hr and lthr:
+        return compute_tss_from_hr(duration, int(avg_hr), lthr)
+    return None
 
 
 # ─── Main sync ────────────────────────────────────────────────────────────────
 
 async def sync_strava():
     if not strava_client.is_configured():
-        logger.warning("Strava not configured — skipping. Run scripts/strava_auth.sh first.")
+        print("Strava not configured — skipping")
         return
 
-    # Find the timestamp of the last synced Strava activity
+    # Load profile
     async with AsyncSessionLocal() as session:
         last = await session.scalar(
             select(Activity)
@@ -91,29 +72,24 @@ async def sync_strava():
             .limit(1)
         )
         after_ts = int(last.start_time.timestamp()) + 1 if last else 0
-
-        # Load user profile for TSS calculations
         profile = await session.scalar(select(UserProfile).where(UserProfile.id == 1))
-        ftp = profile.ftp_watts if profile else None
+        ftp  = profile.ftp_watts if profile else None
         lthr = profile.lthr_bpm if profile else None
 
+    print(f"Strava: syncing since ts={after_ts}, FTP={ftp}, LTHR={lthr}")
+
+    # Fetch new activities
     try:
         activities = await strava_client.list_all_activities_since(after_ts)
     except Exception as e:
-        logger.error(f"Strava activity fetch failed: {e}")
-        return
-
-    if not activities:
+        print(f"Strava activity fetch failed: {e}")
         return
 
     async with AsyncSessionLocal() as session:
         new_count = 0
         for act in activities:
             source_id = f"strava_{act['id']}"
-            exists = await session.scalar(
-                select(Activity).where(Activity.source_id == source_id)
-            )
-            if exists:
+            if await session.scalar(select(Activity).where(Activity.source_id == source_id)):
                 continue
 
             start_str = act.get("start_date", "")
@@ -122,21 +98,13 @@ async def sync_strava():
             except (ValueError, AttributeError):
                 start_time = datetime.utcnow()
 
-            duration = act.get("moving_time", 0) or act.get("elapsed_time", 0)
-            avg_hr = act.get("average_heartrate")
-            np_watts = act.get("weighted_average_watts")
+            duration  = act.get("moving_time", 0) or act.get("elapsed_time", 0)
+            avg_hr    = act.get("average_heartrate")
+            np_watts  = act.get("weighted_average_watts")
             avg_watts = act.get("average_watts")
+            tss       = _calc_tss(duration, avg_hr, np_watts, avg_watts, ftp, lthr)
 
-            # Compute TSS
-            tss = None
-            if np_watts and ftp:
-                tss = compute_tss_from_power(duration, np_watts, ftp)
-            elif avg_watts and ftp:
-                tss = compute_tss_from_power(duration, avg_watts, ftp)
-            elif avg_hr and lthr:
-                tss = compute_tss_from_hr(duration, int(avg_hr), lthr)
-
-            activity = Activity(
+            session.add(Activity(
                 source="strava",
                 source_id=source_id,
                 activity_date=start_time.date(),
@@ -155,10 +123,59 @@ async def sync_strava():
                 normalized_power_watts=np_watts,
                 ftp_watts=ftp,
                 raw_data={k: act[k] for k in ("id", "name", "type", "sport_type", "suffer_score") if k in act},
-            )
-            session.add(activity)
+            ))
             new_count += 1
 
         await session.commit()
         if new_count:
-            logger.info(f"Strava: stored {new_count} new activities")
+            print(f"Strava: stored {new_count} new activities")
+
+    # Always backfill TSS for existing activities with null TSS
+    # This handles the case where LTHR/FTP was set AFTER activities were synced
+    await _backfill_tss(ftp, lthr)
+
+
+# ─── TSS Backfill ─────────────────────────────────────────────────────────────
+
+async def _backfill_tss(ftp, lthr):
+    """
+    Recalculate TSS for all Strava activities where TSS is null.
+    Runs on every sync — fast since it skips activities that already have TSS.
+
+    This is critical because:
+    - User sets LTHR after first sync → old activities have null TSS
+    - DB was deleted and resynced before profile was saved → same problem
+    """
+    if not ftp and not lthr:
+        print("Strava: skipping TSS backfill — no LTHR or FTP in profile")
+        return
+
+    async with AsyncSessionLocal() as session:
+        rows = list(await session.scalars(
+            select(Activity).where(
+                Activity.source == "strava",
+                Activity.tss == None,
+            )
+        ))
+
+        if not rows:
+            print("Strava: all activities already have TSS ✓")
+            return
+
+        updated = 0
+        for act in rows:
+            tss = _calc_tss(
+                act.duration_seconds,
+                act.avg_heart_rate,
+                act.normalized_power_watts,
+                act.avg_power_watts,
+                ftp,
+                lthr,
+            )
+            if tss:
+                act.tss = round(tss, 1)
+                act.ftp_watts = ftp
+                updated += 1
+
+        await session.commit()
+        print(f"Strava: backfilled TSS for {updated}/{len(rows)} activities")
