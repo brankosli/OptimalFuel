@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
-from app.models.models import DailySummary, SleepRecord
+from app.models.models import DailySummary, SleepRecord, Activity, UserProfile
 
 router = APIRouter()
 
@@ -38,7 +38,58 @@ async def today_summary(db: AsyncSession = Depends(get_db)):
     row = await db.scalar(select(DailySummary).where(DailySummary.summary_date == today))
     if not row:
         return {"message": "No data yet — trigger a sync first", "date": today.isoformat()}
-    return _summary_dict(row)
+
+    base = _summary_dict(row)
+
+    # ── Generate rich recommendation ───────────────────────────────────────
+    try:
+        from app.services.analytics.recommendation import generate_recommendation
+
+        # Load profile for LTHR
+        profile = await db.scalar(select(UserProfile).where(UserProfile.id == 1))
+        lthr = profile.lthr_bpm if profile else None
+
+        # Last 7 days of activities for sport suggestion
+        week_ago = today - dt.timedelta(days=7)
+        recent_acts = list(await db.scalars(
+            select(Activity)
+            .where(
+                Activity.activity_date >= week_ago,
+                Activity.source.notin_(["polar_dedup", "strava_dedup"]),
+            )
+            .order_by(Activity.activity_date)
+        ))
+        recent_sports = [a.sport_type for a in recent_acts]
+
+        # Last 7 nights of sleep quality for consecutive poor sleep detection
+        sleep_rows = list(await db.scalars(
+            select(SleepRecord)
+            .where(SleepRecord.sleep_date >= week_ago, SleepRecord.sleep_date < today)
+            .order_by(SleepRecord.sleep_date)
+        ))
+        sq_history = [s.sleep_quality_composite for s in sleep_rows]
+
+        rec = generate_recommendation(
+            tsb=row.tsb,
+            atl=row.atl,
+            ctl=row.ctl,
+            acwr=row.acwr,
+            sleep_quality=row.sleep_quality_composite,
+            sleep_debt_minutes=row.sleep_debt_minutes,
+            nocturnal_hr_dip=row.nocturnal_hr_dip,
+            deep_sleep_deficit=row.deep_sleep_deficit,
+            training_monotony=row.training_monotony,
+            recovery_classification=row.recovery_classification,
+            lthr=lthr,
+            recent_sports=recent_sports,
+            sleep_quality_history=sq_history,
+        )
+        base["recommendation"] = rec
+
+    except Exception as e:
+        base["recommendation"] = {"error": str(e)}
+
+    return base
 
 
 @router.get("/sleep-insights")
@@ -90,13 +141,13 @@ async def sleep_insights(
     return {
         "records": records,
         "aggregates": {
-            "avg_quality_score":      round(avg_quality, 1) if avg_quality else None,
-            "avg_deep_pct":           round(avg_deep, 1) if avg_deep else None,
-            "avg_rem_pct":            round(avg_rem, 1) if avg_rem else None,
-            "avg_hours":              round(avg_hours, 1) if avg_hours else None,
-            "avg_nocturnal_hr_dip":   round(avg_hr_dip, 1) if avg_hr_dip else None,
-            "deep_deficit_days":      deficit_days,
-            "deep_deficit_pct":       round(deficit_days / len(records) * 100) if records else 0,
+            "avg_quality_score":    round(avg_quality, 1) if avg_quality else None,
+            "avg_deep_pct":         round(avg_deep, 1) if avg_deep else None,
+            "avg_rem_pct":          round(avg_rem, 1) if avg_rem else None,
+            "avg_hours":            round(avg_hours, 1) if avg_hours else None,
+            "avg_nocturnal_hr_dip": round(avg_hr_dip, 1) if avg_hr_dip else None,
+            "deep_deficit_days":    deficit_days,
+            "deep_deficit_pct":     round(deficit_days / len(records) * 100) if records else 0,
         }
     }
 
@@ -108,8 +159,6 @@ async def trigger_sync():
     return {"message": "Sync complete"}
 
 
-# ─── Debug endpoints (keep until stable) ─────────────────────────────────────
-
 @router.get("/debug/polar-sleep-raw")
 async def debug_polar_sleep_raw():
     from app.services.polar.client import polar_client
@@ -120,7 +169,6 @@ async def debug_polar_sleep_raw():
 
 @router.get("/debug/polar-check")
 async def debug_polar_check():
-    from app.services.polar.client import polar_client
     from app.core.config import settings
     return {
         "has_token":     bool(settings.polar_access_token),
