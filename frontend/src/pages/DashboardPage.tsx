@@ -1,4 +1,4 @@
-import { useTodaySummary, useActivities, useSleep } from '@/hooks/useData'
+import { useTodaySummary, useActivities, useSleep, useNextRace } from '@/hooks/useData'
 import {
   tsbColor, carbStrategyLabel, carbStrategyColor,
   formatDuration, formatCalories, sportIcon,
@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const { data: activities = [] } = useActivities(7)
   const { data: sleep = [] } = useSleep(1)
 
+  const { data: nextRace } = useNextRace()
   const todaySleep = sleep[0]
   const rec = today?.recommendation
   const todayActivities = activities.filter(

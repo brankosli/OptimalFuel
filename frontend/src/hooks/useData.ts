@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authApi } from '@/utils/api'
+import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authApi, racesApi } from '@/utils/api'
 import { format, subDays } from 'date-fns'
 
 export function useAuthStatus() {
@@ -89,5 +89,38 @@ export function useWeeklyReport(weekOffset: number = 0) {
   return useQuery({
     queryKey: ['weekly-report', weekOffset],
     queryFn: () => analyticsApi.weeklyReport(weekOffset).then(r => r.data),
+  })
+}
+
+export function useRaces() {
+  return useQuery({ queryKey: ['races'], queryFn: () => racesApi.list().then(r => r.data) })
+}
+
+export function useNextRace() {
+  return useQuery({ queryKey: ['races', 'next'], queryFn: () => racesApi.nextRace().then(r => r.data) })
+}
+
+export function useCreateRace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: object) => racesApi.create(data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['races'] }),
+  })
+}
+
+export function useUpdateRace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: object }) =>
+      racesApi.update(id, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['races'] }),
+  })
+}
+
+export function useDeleteRace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => racesApi.delete(id).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['races'] }),
   })
 }

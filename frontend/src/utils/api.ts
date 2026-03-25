@@ -41,3 +41,12 @@ export const profileApi = {
   get: () => api.get('/api/v1/profile/'),
   update: (data: object) => api.put('/api/v1/profile/', data),
 }
+
+export const racesApi = {
+  list:      ()                  => api.get('/api/v1/races/'),
+  get:       (id: number)        => api.get(`/api/v1/races/${id}`),
+  create:    (data: object)      => api.post('/api/v1/races/', data),
+  update:    (id: number, data: object) => api.put(`/api/v1/races/${id}`, data),
+  delete:    (id: number)        => api.delete(`/api/v1/races/${id}`),
+  nextRace:  ()                  => api.get('/api/v1/races/dashboard/next'),
+}

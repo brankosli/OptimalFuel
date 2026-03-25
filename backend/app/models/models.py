@@ -173,3 +173,38 @@ class UserProfile(Base):
     dietary_preference: Mapped[Optional[str]] = mapped_column(String(50))
     protein_target_per_kg: Mapped[float] = mapped_column(Float, default=1.8)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ─── Race Calendar ────────────────────────────────────────────────────────────
+
+class Race(Base):
+    """
+    User-managed race calendar entry.
+    Phases, CTL targets and TSS targets are computed on the fly
+    from race_date + race_type — no extra tables needed.
+    """
+    __tablename__ = "races"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    race_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    race_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    # marathon | half_marathon | 10k | 5k | cycling | other
+
+    priority: Mapped[str] = mapped_column(String(5), nullable=False, default="A")
+    # A | B | C | test
+
+    target_finish_time: Mapped[Optional[str]] = mapped_column(String(10))  # "1:45:00"
+    actual_finish_time: Mapped[Optional[str]] = mapped_column(String(10))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Override weekly TSS targets per phase (null = use computed defaults)
+    override_base_tss: Mapped[Optional[int]] = mapped_column(Integer)
+    override_build_tss: Mapped[Optional[int]] = mapped_column(Integer)
+    override_peak_tss: Mapped[Optional[int]] = mapped_column(Integer)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow,
+                                                   onupdate=datetime.utcnow)

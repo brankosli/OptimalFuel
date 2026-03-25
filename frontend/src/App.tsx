@@ -6,6 +6,7 @@ import SleepPage from '@/pages/SleepPage'
 import NutritionPage from '@/pages/NutritionPage'
 import SettingsPage from '@/pages/SettingsPage'
 import ReportPage from '@/pages/ReportPage'
+import RacesPage from '@/pages/RacesPage'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="nutrition"  element={<NutritionPage />} />
           <Route path="settings"   element={<SettingsPage />} />
           <Route path="report"     element={<ReportPage />} />
+          <Route path="races"      element={<RacesPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
