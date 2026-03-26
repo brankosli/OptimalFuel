@@ -62,7 +62,6 @@ class Activity(Base):
 
 class SleepRecord(Base):
     __tablename__ = "sleep_records"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source: Mapped[str] = mapped_column(String(20), default="polar")
     source_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
@@ -101,44 +100,30 @@ class SleepRecord(Base):
 
 class DailySummary(Base):
     __tablename__ = "daily_summaries"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     summary_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
-
-    # PMC
     ctl: Mapped[Optional[float]] = mapped_column(Float)
     atl: Mapped[Optional[float]] = mapped_column(Float)
     tsb: Mapped[Optional[float]] = mapped_column(Float)
-
-    # Training totals
     total_tss: Mapped[Optional[float]] = mapped_column(Float)
     total_calories_burned: Mapped[Optional[float]] = mapped_column(Float)
     total_activity_seconds: Mapped[int] = mapped_column(Integer, default=0)
-
-    # Recovery
     recovery_score: Mapped[Optional[int]] = mapped_column(Integer)
     readiness_label: Mapped[Optional[str]] = mapped_column(String(20))
     recovery_classification: Mapped[Optional[str]] = mapped_column(String(30))
     training_recommendation: Mapped[Optional[str]] = mapped_column(String(255))
-
-    # Load quality metrics (NEW)
-    acwr: Mapped[Optional[float]] = mapped_column(Float)              # ATL/CTL — injury risk
-    training_monotony: Mapped[Optional[float]] = mapped_column(Float) # Foster 1998
-    training_strain: Mapped[Optional[float]] = mapped_column(Float)   # weekly load × monotony
-
-    # Sleep analytics
+    acwr: Mapped[Optional[float]] = mapped_column(Float)
+    training_monotony: Mapped[Optional[float]] = mapped_column(Float)
+    training_strain: Mapped[Optional[float]] = mapped_column(Float)
     sleep_quality_composite: Mapped[Optional[float]] = mapped_column(Float)
     nocturnal_hr_dip: Mapped[Optional[float]] = mapped_column(Float)
     deep_sleep_deficit: Mapped[Optional[bool]] = mapped_column(Boolean)
     sleep_debt_minutes: Mapped[Optional[int]] = mapped_column(Integer)
-
-    # Nutrition targets
     target_calories: Mapped[Optional[float]] = mapped_column(Float)
     target_carbs_g: Mapped[Optional[float]] = mapped_column(Float)
     target_protein_g: Mapped[Optional[float]] = mapped_column(Float)
     target_fat_g: Mapped[Optional[float]] = mapped_column(Float)
     carb_strategy: Mapped[Optional[str]] = mapped_column(String(20))
-
     computed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -178,33 +163,49 @@ class UserProfile(Base):
 # ─── Race Calendar ────────────────────────────────────────────────────────────
 
 class Race(Base):
-    """
-    User-managed race calendar entry.
-    Phases, CTL targets and TSS targets are computed on the fly
-    from race_date + race_type — no extra tables needed.
-    """
     __tablename__ = "races"
-
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     race_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     race_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    # marathon | half_marathon | 10k | 5k | cycling | other
-
     priority: Mapped[str] = mapped_column(String(5), nullable=False, default="A")
-    # A | B | C | test
-
-    target_finish_time: Mapped[Optional[str]] = mapped_column(String(10))  # "1:45:00"
+    target_finish_time: Mapped[Optional[str]] = mapped_column(String(10))
     actual_finish_time: Mapped[Optional[str]] = mapped_column(String(10))
     notes: Mapped[Optional[str]] = mapped_column(Text)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
-
-    # Override weekly TSS targets per phase (null = use computed defaults)
     override_base_tss: Mapped[Optional[int]] = mapped_column(Integer)
     override_build_tss: Mapped[Optional[int]] = mapped_column(Integer)
     override_peak_tss: Mapped[Optional[int]] = mapped_column(Integer)
-
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow,
                                                    onupdate=datetime.utcnow)
+
+
+# ─── Wellness Log ─────────────────────────────────────────────────────────────
+
+class WellnessLog(Base):
+    """
+    Daily subjective wellness check-in.
+    5 metrics rated 1-5. Takes ~60 seconds to fill in.
+    Cross-correlated with training load to detect overtraining
+    2-3 weeks before physiological markers do.
+    """
+    __tablename__ = "wellness_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    log_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
+
+    # 1-5 scale (1=very poor, 3=normal, 5=excellent)
+    energy:     Mapped[Optional[int]] = mapped_column(Integer)
+    mood:       Mapped[Optional[int]] = mapped_column(Integer)
+    soreness:   Mapped[Optional[int]] = mapped_column(Integer)
+    sleep_feel: Mapped[Optional[int]] = mapped_column(Integer)
+    stress:     Mapped[Optional[int]] = mapped_column(Integer)
+
+    # Composite score (average of all fields × 20 = 0-100)
+    composite: Mapped[Optional[float]] = mapped_column(Float)
+
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow,
+                                                  onupdate=datetime.utcnow)

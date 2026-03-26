@@ -14,20 +14,13 @@ from app.db.session import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown events."""
-    # Startup
     print(f"🚀 Starting {settings.app_name}...")
     await init_db()
     print("✅ Database ready")
-
-    # Start background sync scheduler
     from app.tasks.scheduler import start_scheduler
     scheduler = start_scheduler()
     print(f"⏰ Sync scheduler started (every {settings.sync_interval_minutes}m)")
-
     yield
-
-    # Shutdown
     scheduler.shutdown()
     print("👋 Scheduler stopped")
 
@@ -40,7 +33,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_url],
@@ -50,7 +42,7 @@ app.add_middleware(
 )
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
-from app.api.v1.endpoints import auth, activities, sleep, nutrition, analytics, profile, races  # noqa: E402
+from app.api.v1.endpoints import auth, activities, sleep, nutrition, analytics, profile, races, wellness  # noqa: E402
 
 app.include_router(auth.router,       prefix="/api/v1/auth",       tags=["auth"])
 app.include_router(activities.router, prefix="/api/v1/activities", tags=["activities"])
@@ -59,6 +51,7 @@ app.include_router(nutrition.router,  prefix="/api/v1/nutrition",  tags=["nutrit
 app.include_router(analytics.router,  prefix="/api/v1/analytics",  tags=["analytics"])
 app.include_router(profile.router,    prefix="/api/v1/profile",    tags=["profile"])
 app.include_router(races.router,      prefix="/api/v1/races",      tags=["races"])
+app.include_router(wellness.router,   prefix="/api/v1/wellness",   tags=["wellness"])
 
 
 @app.get("/api/health")
