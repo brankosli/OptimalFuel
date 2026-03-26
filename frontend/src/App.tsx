@@ -7,6 +7,7 @@ import NutritionPage from '@/pages/NutritionPage'
 import SettingsPage from '@/pages/SettingsPage'
 import ReportPage from '@/pages/ReportPage'
 import RacesPage from '@/pages/RacesPage'
+import WellnessPage from '@/pages/WellnessPage'
 
 export default function App() {
   return (
@@ -18,9 +19,10 @@ export default function App() {
           <Route path="training"   element={<TrainingPage />} />
           <Route path="sleep"      element={<SleepPage />} />
           <Route path="nutrition"  element={<NutritionPage />} />
-          <Route path="settings"   element={<SettingsPage />} />
-          <Route path="report"     element={<ReportPage />} />
+          <Route path="wellness"   element={<WellnessPage />} />
           <Route path="races"      element={<RacesPage />} />
+          <Route path="report"     element={<ReportPage />} />
+          <Route path="settings"   element={<SettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
