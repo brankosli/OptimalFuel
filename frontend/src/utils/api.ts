@@ -50,3 +50,7 @@ export const racesApi = {
   delete:    (id: number)        => api.delete(`/api/v1/races/${id}`),
   nextRace:  ()                  => api.get('/api/v1/races/dashboard/next'),
 }
+
+export const raceTemplateApi = {
+  get: (raceId: number) => api.get(`/api/v1/races/${raceId}/template`),
+}

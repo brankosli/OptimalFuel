@@ -371,3 +371,318 @@ def _build_milestones(phase_dates: dict, race_type: str, priority: str, today: d
     milestones.append(ms(race_date, "🏁 Race Day", ""))
     milestones.sort(key=lambda x: x["date"])
     return milestones
+
+
+# ─── Weekly training templates ────────────────────────────────────────────────
+
+"""
+Templates define the STRUCTURE of a training week per phase and race type.
+Not a fixed calendar — a pattern the athlete maps onto their own schedule.
+
+Each session:
+  type         : run | ride | strength | rest | walk
+  label        : short name
+  zone         : zone1 | zone2 | tempo | threshold | race_pace | rest
+  duration_min : suggested minutes
+  purpose      : what physiological adaptation this targets
+  notes        : practical cues
+  key          : True if this is the session that must not be skipped
+"""
+
+SESSION_ZONES = {
+    "zone1":      {"label": "Zone 1 — Recovery",   "color": "#94a3b8"},
+    "zone2":      {"label": "Zone 2 — Aerobic",     "color": "#60a5fa"},
+    "tempo":      {"label": "Zone 3 — Tempo",       "color": "#a78bfa"},
+    "threshold":  {"label": "Zone 4 — Threshold",   "color": "#fb923c"},
+    "race_pace":  {"label": "Race Pace",             "color": "#e8ff47"},
+    "rest":       {"label": "Full Rest",             "color": "#475569"},
+}
+
+def _session(type, label, zone, duration, purpose, notes="", key=False):
+    return {
+        "type":         type,
+        "label":        label,
+        "zone":         zone,
+        "zone_label":   SESSION_ZONES.get(zone, {}).get("label", zone),
+        "zone_color":   SESSION_ZONES.get(zone, {}).get("color", "#94a3b8"),
+        "duration_min": duration,
+        "purpose":      purpose,
+        "notes":        notes,
+        "key":          key,
+    }
+
+def _rest(note=""):
+    return _session("rest", "Rest", "rest", 0, "Recovery and adaptation", note)
+
+
+# ─── Half Marathon templates ──────────────────────────────────────────────────
+
+HALF_MARATHON_TEMPLATES = {
+    "base": {
+        "focus": "Build aerobic engine. High volume, low intensity. Cycling as cross-training to add load without run injury risk.",
+        "intensity_split": "80% easy, 20% moderate",
+        "key_session": "Long run",
+        "days": [
+            _rest("Active recovery — stretch, mobility"),
+            _session("run",  "Easy run",           "zone2",     45,  "Aerobic base building", "Conversational pace. HR 68-83% LTHR"),
+            _session("ride", "Aerobic ride",        "zone2",     75,  "Cross-training aerobic base", "Builds CTL without run stress"),
+            _session("run",  "Easy run",            "zone2",     40,  "Aerobic base", "Same easy effort as Tuesday"),
+            _session("ride", "Easy ride or rest",   "zone1",     60,  "Active recovery", "Optional — skip if tired"),
+            _session("run",  "Long run",            "zone2",     90,  "Aerobic endurance, fat adaptation", "KEY SESSION — slow and steady, HR under 80% LTHR", key=True),
+            _rest("Complete rest or gentle walk"),
+        ],
+        "weekly_note": "This phase is about volume, not intensity. Resist the urge to push the pace. The aerobic base you build here determines your ceiling in the build phase.",
+    },
+    "build": {
+        "focus": "Introduce quality. Threshold work 1-2×/week. Long run gets longer. Cycling shifts to recovery role.",
+        "intensity_split": "75% easy, 25% quality",
+        "key_session": "Threshold intervals",
+        "days": [
+            _rest("Full rest — essential after weekend long run"),
+            _session("run",  "Threshold intervals", "threshold", 55,  "Lactate threshold improvement", "4-6×1km at 95-100% LTHR with 90s recovery. KEY SESSION", key=True),
+            _session("run",  "Easy recovery run",   "zone2",     40,  "Flush legs from Tuesday", "Very easy. If legs are heavy, drop to 30 min"),
+            _session("ride", "Aerobic ride",         "zone2",     75,  "Aerobic load without run stress", "Good day for a longer ride — legs are fresher"),
+            _session("run",  "Tempo run",            "tempo",     40,  "Comfortably hard sustained effort", "15 min warm-up, 20 min at 84-94% LTHR, 5 min cool-down"),
+            _session("run",  "Long run",             "zone2",    100,  "Endurance — building to 21km", "Last 15-20 min can be at marathon pace. KEY SESSION", key=True),
+            _session("ride", "Easy ride or rest",    "zone1",     45,  "Active recovery", "Keep it genuinely easy"),
+        ],
+        "weekly_note": "Two quality sessions (Tuesday threshold + Friday tempo) are the heart of this week. Everything else exists to support them. Do not do two hard sessions back-to-back.",
+    },
+    "peak": {
+        "focus": "Race-specific. Volume drops slightly, intensity stays high. Introduce half marathon pace work.",
+        "intensity_split": "70% easy, 30% quality",
+        "key_session": "Race pace run",
+        "days": [
+            _rest("Full rest"),
+            _session("run",  "Threshold intervals", "threshold", 55,  "Maintain lactate threshold fitness", "5×1km at LTHR. Less volume than build phase"),
+            _session("run",  "Easy run",            "zone2",     35,  "Recovery", "Short and easy"),
+            _session("ride", "Easy ride",            "zone1",     60,  "Active recovery", "No intensity — legs need to be fresh for Friday"),
+            _session("run",  "Race pace run",        "race_pace", 50,  "Half marathon pace rehearsal", "10 min warm-up, 30 min at target race pace, 10 min cool-down. KEY SESSION", key=True),
+            _session("run",  "Long run",             "zone2",     85,  "Endurance maintenance, confidence", "Similar to build but not longer. Final 20 min at race pace", key=True),
+            _rest("Full rest"),
+        ],
+        "weekly_note": "This is where fitness becomes race fitness. The Friday race pace run is critical — it teaches your body what race day feels like. Long run is slightly shorter than peak build to allow quality on Friday.",
+    },
+    "taper": {
+        "focus": "Freshness. Volume drops 40-50%. Intensity maintained. Trust the process.",
+        "intensity_split": "80% easy, 20% sharp",
+        "key_session": "Race pace strides",
+        "days": [
+            _rest("Full rest"),
+            _session("run",  "Easy run + strides",  "zone2",     35,  "Maintain feel, freshness building", "30 min easy + 4×20s strides at race pace. Legs should feel good"),
+            _rest("Rest or easy walk"),
+            _session("run",  "Easy run",            "zone2",     25,  "Keep legs turning over", "Very short. No effort."),
+            _session("run",  "Race pace strides",   "race_pace", 30,  "Stay sharp, confirm race pace feels easy", "20 min easy + 4×1 min at race pace. KEY SESSION", key=True),
+            _session("run",  "Easy shakeout",       "zone1",     20,  "Stay loose", "Day before race — 15-20 min jog only"),
+            {"type": "race", "label": "🏁 Race Day", "zone": "race_pace", "zone_label": "Race Pace", "zone_color": "#e8ff47", "duration_min": 0, "purpose": "Execute your plan", "notes": "Start conservative. First 5km should feel embarrassingly easy.", "key": True},
+        ],
+        "weekly_note": "The fitness is locked in. You cannot gain fitness this week — you can only lose freshness. Less is more. Every extra easy run you skip this week is a gift to race day you.",
+    },
+}
+
+
+# ─── Marathon templates ───────────────────────────────────────────────────────
+
+MARATHON_TEMPLATES = {
+    "base": {
+        "focus": "Build mileage base. Slow, consistent aerobic running. Cycling supplements without adding run injury risk.",
+        "intensity_split": "85% easy, 15% moderate",
+        "key_session": "Long run",
+        "days": [
+            _rest("Full rest — critical for adaptation"),
+            _session("run",  "Easy run",          "zone2",     50,  "Aerobic base", "Comfortable conversational pace throughout"),
+            _session("ride", "Aerobic ride",       "zone2",     90,  "Additional aerobic stimulus", "Good day for a longer ride"),
+            _session("run",  "Easy run",           "zone2",     45,  "Aerobic volume", "Same pace as Tuesday"),
+            _session("run",  "Easy run",           "zone2",     40,  "Aerobic base", "Can swap for easy ride if legs tired"),
+            _session("run",  "Long run",           "zone2",    110,  "Aerobic endurance, glycogen depletion", "KEY SESSION — build weekly. HR never above 80% LTHR", key=True),
+            _rest("Walk or gentle cycling only"),
+        ],
+        "weekly_note": "Marathon base is about consistent easy running. More is not better — consistent is better. Every run at the right pace contributes. Every run too fast costs recovery.",
+    },
+    "build": {
+        "focus": "Introduce marathon pace. Midweek quality sessions. Long run becomes the week's centrepiece.",
+        "intensity_split": "80% easy, 20% quality",
+        "key_session": "Marathon pace long run",
+        "days": [
+            _rest("Full rest"),
+            _session("run",  "Threshold intervals", "threshold",  60, "Raise lactate threshold", "5-6×1km at LTHR. KEY QUALITY SESSION", key=True),
+            _session("run",  "Easy recovery",       "zone2",      40, "Flush Tuesday effort", "Very easy. HR under 75% LTHR"),
+            _session("ride", "Aerobic ride",         "zone2",      90, "Aerobic load, legs rested from run", "Great day for a 2-3hr ride"),
+            _session("run",  "Marathon pace run",    "race_pace",  50, "Marathon pace economy", "15 min warm-up, 25 min at MP, 10 min cool-down"),
+            _session("run",  "Long run",             "zone2",     130, "Endurance, building to 32km", "Last 30-40 min at marathon pace. KEY SESSION", key=True),
+            _session("ride", "Easy ride",            "zone1",      45, "Active recovery", "Spin out the legs gently"),
+        ],
+        "weekly_note": "Two hard sessions (Tuesday + Friday) with the long run on Saturday. Wednesday ride maintains aerobic load while resting the legs for Friday's marathon pace work.",
+    },
+    "peak": {
+        "focus": "Race specificity. Everything simulates race day demands. Volume holds, intensity peaks.",
+        "intensity_split": "75% easy, 25% quality",
+        "key_session": "Marathon pace long run",
+        "days": [
+            _rest("Full rest"),
+            _session("run",  "Threshold run",        "threshold",  55, "Maintain fitness peak", "4×2km at LTHR with 2 min recovery"),
+            _session("run",  "Easy run",             "zone2",      35, "Recovery", "Genuinely easy"),
+            _session("ride", "Easy ride",             "zone1",      60, "Recovery ride", "No intensity — saving legs for Saturday"),
+            _session("run",  "Marathon pace run",     "race_pace",  60, "Race specificity, confidence building", "10 min warm-up, 40 min at MP, 10 min cool-down. KEY SESSION", key=True),
+            _session("run",  "Long run",              "zone2",     120, "Endurance + race pace finish", "Final 40 min at marathon pace. KEY SESSION", key=True),
+            _rest("Full rest"),
+        ],
+        "weekly_note": "This is the hardest week of the cycle. Friday + Saturday is demanding. If you can nail both, confidence going into taper will be very high.",
+    },
+    "taper": {
+        "focus": "Freshness. Drop volume aggressively. Keep some race pace touches to stay sharp.",
+        "intensity_split": "85% easy, 15% sharp",
+        "key_session": "Marathon pace strides",
+        "days": [
+            _rest("Full rest"),
+            _session("run",  "Easy run + strides",   "zone2",      40, "Maintain feel", "35 min easy + 4×20s at 10K pace strides. Legs feel good"),
+            _rest("Rest or gentle walk"),
+            _session("run",  "Easy run",             "zone2",      30, "Keep legs turning over", "Short. No effort whatsoever"),
+            _session("run",  "Marathon pace strides", "race_pace",  35, "Stay sharp, confirm pace feels controlled", "25 min easy + 5×1 min at MP with 1 min jog. KEY SESSION", key=True),
+            _session("run",  "Easy shakeout",        "zone1",      20, "Stay loose the day before", "15-20 min jog. Nothing more."),
+            {"type": "race", "label": "🏁 Race Day", "zone": "race_pace", "zone_label": "Marathon Pace", "zone_color": "#e8ff47", "duration_min": 0, "purpose": "Execute your plan", "notes": "Start 10-15 sec/km slower than target pace for first 10km. The back half is where marathons are won.", "key": True},
+        ],
+        "weekly_note": "Three weeks of taper. This is week 3 (race week). Your legs will feel flat and heavy mid-taper — that is normal and expected. Do not add extra runs to fix it. Trust the process.",
+    },
+}
+
+
+# ─── 10K templates ────────────────────────────────────────────────────────────
+
+TEN_K_TEMPLATES = {
+    "base": {
+        "focus": "Aerobic foundation. Easy volume with cycling cross-training.",
+        "intensity_split": "85% easy, 15% moderate",
+        "key_session": "Long run",
+        "days": [
+            _rest(),
+            _session("run",  "Easy run",       "zone2",    40, "Aerobic base"),
+            _session("ride", "Aerobic ride",    "zone2",    60, "Cross-training"),
+            _session("run",  "Easy run",        "zone2",    35, "Aerobic volume"),
+            _rest("Or easy walk"),
+            _session("run",  "Long run",        "zone2",    70, "Aerobic endurance", "Build weekly toward 12-14km", key=True),
+            _rest(),
+        ],
+        "weekly_note": "Build the aerobic engine before adding intensity.",
+    },
+    "build": {
+        "focus": "Introduce VO2max work and tempo running.",
+        "intensity_split": "75% easy, 25% quality",
+        "key_session": "VO2max intervals",
+        "days": [
+            _rest(),
+            _session("run",  "VO2max intervals", "threshold", 45, "VO2max development", "6×800m at 5K effort with 90s recovery. KEY SESSION", key=True),
+            _session("run",  "Easy recovery",    "zone2",     35, "Recovery from Tuesday"),
+            _session("ride", "Aerobic ride",      "zone2",     60, "Aerobic load"),
+            _session("run",  "Tempo run",         "tempo",     35, "Lactate threshold", "20 min at 10K goal pace"),
+            _session("run",  "Long run",          "zone2",     65, "Endurance base", "", key=True),
+            _rest(),
+        ],
+        "weekly_note": "Two quality sessions build the speed you need for 10K.",
+    },
+    "peak": {
+        "focus": "Race-specific speed. Short and sharp.",
+        "intensity_split": "70% easy, 30% quality",
+        "key_session": "10K pace work",
+        "days": [
+            _rest(),
+            _session("run",  "10K pace intervals", "threshold", 40, "Race pace economy", "5×1km at 10K goal pace", key=True),
+            _session("run",  "Easy run",           "zone2",     30, "Recovery"),
+            _rest("Or easy ride 45 min"),
+            _session("run",  "Race pace strides",  "race_pace", 35, "Stay sharp", "25 min easy + 6×20s at 5K effort", key=True),
+            _session("run",  "Easy long run",      "zone2",     55, "Confidence", "Nothing heroic — just comfortable"),
+            _rest(),
+        ],
+        "weekly_note": "Volume drops, sharpness maintained. Everything is fast but short.",
+    },
+    "taper": {
+        "focus": "Freshness. 7-day taper — very short.",
+        "intensity_split": "85% easy, 15% sharp",
+        "key_session": "Race pace strides",
+        "days": [
+            _rest(),
+            _session("run",  "Easy run + strides", "zone2",     30, "Stay sharp", "25 min easy + 4×20s fast"),
+            _rest(),
+            _session("run",  "Easy run",           "zone1",     20, "Stay loose"),
+            _session("run",  "Race pace strides",  "race_pace", 25, "Final sharpener", "15 min easy + 4×1 min at 10K pace", key=True),
+            _session("run",  "Easy shakeout",      "zone1",     15, "Loosen up"),
+            {"type": "race", "label": "🏁 Race Day", "zone": "race_pace", "zone_label": "10K Pace", "zone_color": "#e8ff47", "duration_min": 0, "purpose": "Race", "notes": "Go out at goal pace. Do not start fast.", "key": True},
+        ],
+        "weekly_note": "Short taper — 7 days. Keep strides in to stay sharp.",
+    },
+}
+
+
+# ─── Template registry ────────────────────────────────────────────────────────
+
+TEMPLATES = {
+    "half_marathon": HALF_MARATHON_TEMPLATES,
+    "marathon":      MARATHON_TEMPLATES,
+    "10k":           TEN_K_TEMPLATES,
+    "5k":            TEN_K_TEMPLATES,   # same structure, shorter sessions
+    "cycling":       HALF_MARATHON_TEMPLATES,  # similar periodisation
+    "other":         HALF_MARATHON_TEMPLATES,
+}
+
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def get_weekly_template(
+    race_type: str,
+    phase: str,
+    lthr: int | None = None,
+) -> dict:
+    """
+    Return the weekly training template for a race type + phase combination.
+    Adds HR targets to each session if LTHR is available.
+    """
+    race_templates = TEMPLATES.get(race_type, TEMPLATES["other"])
+    template = race_templates.get(phase, race_templates.get("base"))
+    if not template:
+        return {}
+
+    days_with_hr = []
+    for i, session in enumerate(template["days"]):
+        s = dict(session)
+        s["day"] = DAY_NAMES[i]
+
+        # Attach HR targets if LTHR available
+        if lthr and session["zone"] not in ("rest", "race_pace"):
+            from app.services.analytics.recommendation import ZONE_RANGES
+            lo_pct, hi_pct = ZONE_RANGES.get(session["zone"], (0.68, 0.83))
+            s["hr_min"] = round(lthr * lo_pct)
+            s["hr_max"] = round(lthr * hi_pct)
+        elif lthr and session["zone"] == "race_pace":
+            # Race pace HR is approximately 90-97% LTHR for half, 85-92% for marathon
+            if race_type == "marathon":
+                s["hr_min"] = round(lthr * 0.85)
+                s["hr_max"] = round(lthr * 0.92)
+            else:
+                s["hr_min"] = round(lthr * 0.90)
+                s["hr_max"] = round(lthr * 0.97)
+        else:
+            s["hr_min"] = None
+            s["hr_max"] = None
+
+        days_with_hr.append(s)
+
+    # Estimate weekly TSS from session durations + zones
+    tss_per_hour = {
+        "rest": 0, "zone1": 25, "zone2": 50,
+        "tempo": 75, "threshold": 100, "race_pace": 90,
+    }
+    estimated_tss = sum(
+        tss_per_hour.get(s["zone"], 50) * s["duration_min"] / 60
+        for s in days_with_hr
+    )
+
+    return {
+        "race_type":        race_type,
+        "phase":            phase,
+        "focus":            template["focus"],
+        "intensity_split":  template["intensity_split"],
+        "key_session":      template["key_session"],
+        "weekly_note":      template["weekly_note"],
+        "estimated_tss":    round(estimated_tss),
+        "days":             days_with_hr,
+    }

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authApi, racesApi } from '@/utils/api'
+import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authApi, racesApi, raceTemplateApi } from '@/utils/api'
 import { format, subDays } from 'date-fns'
 
 export function useAuthStatus() {
@@ -122,5 +122,13 @@ export function useDeleteRace() {
   return useMutation({
     mutationFn: (id: number) => racesApi.delete(id).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['races'] }),
+  })
+}
+
+export function useRaceTemplate(raceId: number | null) {
+  return useQuery({
+    queryKey: ['race-template', raceId],
+    queryFn: () => raceTemplateApi.get(raceId!).then(r => r.data),
+    enabled: raceId != null,
   })
 }

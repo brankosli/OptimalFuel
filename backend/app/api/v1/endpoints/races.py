@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from app.db.session import get_db
-from app.models.models import Race, DailySummary, Activity
+from app.models.models import Race, DailySummary, Activity, UserProfile
 
 router = APIRouter()
 
@@ -213,4 +213,41 @@ def _race_dict(r: Race) -> dict:
         "override_base_tss":   r.override_base_tss,
         "override_build_tss":  r.override_build_tss,
         "override_peak_tss":   r.override_peak_tss,
+    }
+
+
+@router.get("/{race_id}/template")
+async def get_race_template(race_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Return the weekly training template for the race's current phase.
+    Includes HR targets if LTHR is set in profile.
+    """
+    from app.services.analytics.periodisation import get_weekly_template
+
+    race    = await _fetch_or_404(race_id, db)
+    today   = dt.date.today()
+    plan    = await _get_plan(race, db, today)
+    phase   = plan.get("phase", "base")
+
+    profile = await db.scalar(select(UserProfile).where(UserProfile.id == 1))
+    lthr    = profile.lthr_bpm if profile else None
+
+    template = get_weekly_template(
+        race_type = race.race_type,
+        phase     = phase,
+        lthr      = lthr,
+    )
+
+    return {
+        "race_id":   race_id,
+        "race_name": race.name,
+        "phase":     phase,
+        "plan":      {
+            "phase_label":       plan.get("phase_label"),
+            "phase_color":       plan.get("phase_color"),
+            "current_phase_tss": plan.get("current_phase_tss"),
+            "weeks_out":         plan.get("weeks_out"),
+            "banner":            plan.get("banner"),
+        },
+        "template": template,
     }

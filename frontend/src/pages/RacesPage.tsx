@@ -257,6 +257,7 @@ function RaceCard({ race, onEdit }: { race: Race; onEdit: () => void }) {
           paddingTop: 'var(--space-5)', display: 'flex', flexDirection: 'column',
           gap: 'var(--space-5)' }}>
 
+          <>
           {/* TSS targets per phase */}
           <div>
             <p style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase',
@@ -338,6 +339,7 @@ function RaceCard({ race, onEdit }: { race: Race; onEdit: () => void }) {
               </div>
             </div>
           )}
+</>
         </div>
       )}
     </div>
@@ -639,3 +641,4 @@ const dangerBtn: React.CSSProperties = {
   border: '1px solid rgba(248,113,113,0.30)', borderRadius: 'var(--radius-sm)',
   fontSize: 12, color: 'var(--negative)', cursor: 'pointer',
 }
+
