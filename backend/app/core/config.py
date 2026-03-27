@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     secret_key: str = "change-me"
+    anthropic_api_key: str = ""
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./optimalfuel.db"
@@ -39,8 +40,8 @@ class Settings(BaseSettings):
     strava_athlete_id: Optional[str] = None
 
     # Nutrition (optional)
-    edamam_app_id: Optional[str] = None
-    edamam_app_key: Optional[str] = None
+    edamam_app_id:  str = ""
+    edamam_app_key: str = ""
 
     # Scheduler
     sync_interval_minutes: int = 30
