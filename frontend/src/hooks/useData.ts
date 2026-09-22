@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authApi, racesApi, raceTemplateApi } from '@/utils/api'
+import { analyticsApi, activitiesApi, sleepApi, nutritionApi, profileApi, authApi, racesApi, raceTemplateApi, comparisonApi } from '@/utils/api'
 import { format, subDays } from 'date-fns'
 
 export function useAuthStatus() {
@@ -130,5 +130,41 @@ export function useRaceTemplate(raceId: number | null) {
     queryKey: ['race-template', raceId],
     queryFn: () => raceTemplateApi.get(raceId!).then(r => r.data),
     enabled: raceId != null,
+  })
+}
+
+export function useSegments() {
+  return useQuery({ queryKey: ['comparison', 'segments'], queryFn: () => comparisonApi.segments().then(r => r.data) })
+}
+
+export function useSegmentEfforts(segmentId: number | null) {
+  return useQuery({
+    queryKey: ['comparison', 'segment', segmentId],
+    queryFn: () => comparisonApi.segmentEfforts(segmentId!).then(r => r.data),
+    enabled: segmentId != null,
+  })
+}
+
+export function useRoutes() {
+  return useQuery({ queryKey: ['comparison', 'routes'], queryFn: () => comparisonApi.routes().then(r => r.data) })
+}
+
+export function useRouteRides(routeKey: string | null) {
+  return useQuery({
+    queryKey: ['comparison', 'route', routeKey],
+    queryFn: () => comparisonApi.routeRides(routeKey!).then(r => r.data),
+    enabled: routeKey != null,
+  })
+}
+
+export function useTriggerSegmentSync() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => comparisonApi.triggerSync().then(r => r.data),
+    onSuccess: () => {
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ['comparison'] })
+      }, 3000)
+    },
   })
 }

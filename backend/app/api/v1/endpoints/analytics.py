@@ -55,7 +55,7 @@ async def today_summary(db: AsyncSession = Depends(get_db)):
             select(Activity)
             .where(
                 Activity.activity_date >= week_ago,
-                Activity.source.notin_(["polar_dedup", "strava_dedup"]),
+                Activity.source == "strava",
             )
             .order_by(Activity.activity_date)
         ))
@@ -253,7 +253,7 @@ async def weekly_report(
         .where(
             Activity.activity_date >= week_start,
             Activity.activity_date <= week_end,
-            Activity.source.notin_(["polar_dedup", "strava_dedup"]),
+            Activity.source == "strava",
         )
         .order_by(Activity.activity_date)
     ))
