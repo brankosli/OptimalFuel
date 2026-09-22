@@ -42,7 +42,7 @@ app.add_middleware(
 )
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
-from app.api.v1.endpoints import auth, activities, sleep, nutrition, analytics, profile, races, wellness  # noqa: E402
+from app.api.v1.endpoints import auth, activities, sleep, nutrition, analytics, profile, races, wellness, comparison  # noqa: E402
 
 app.include_router(auth.router,       prefix="/api/v1/auth",       tags=["auth"])
 app.include_router(activities.router, prefix="/api/v1/activities", tags=["activities"])
@@ -52,6 +52,7 @@ app.include_router(analytics.router,  prefix="/api/v1/analytics",  tags=["analyt
 app.include_router(profile.router,    prefix="/api/v1/profile",    tags=["profile"])
 app.include_router(races.router,      prefix="/api/v1/races",      tags=["races"])
 app.include_router(wellness.router,   prefix="/api/v1/wellness",   tags=["wellness"])
+app.include_router(comparison.router, prefix="/api/v1/comparison", tags=["comparison"])
 
 
 @app.get("/api/health")

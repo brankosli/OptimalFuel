@@ -56,6 +56,34 @@ class Activity(Base):
     ftp_watts: Mapped[Optional[float]] = mapped_column(Float)
     raw_data: Mapped[Optional[dict]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # GPS + route matching
+    start_lat: Mapped[Optional[float]] = mapped_column(Float)
+    start_lng: Mapped[Optional[float]] = mapped_column(Float)
+    end_lat: Mapped[Optional[float]] = mapped_column(Float)
+    end_lng: Mapped[Optional[float]] = mapped_column(Float)
+    summary_polyline: Mapped[Optional[str]] = mapped_column(Text)
+    segments_synced: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+# ─── Segment Efforts ──────────────────────────────────────────────────────────
+
+class SegmentEffort(Base):
+    __tablename__ = "segment_efforts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    activity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    strava_segment_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    strava_effort_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    effort_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    elapsed_time: Mapped[int] = mapped_column(Integer, nullable=False)  # seconds
+    moving_time: Mapped[Optional[int]] = mapped_column(Integer)
+    distance_meters: Mapped[Optional[float]] = mapped_column(Float)
+    avg_heart_rate: Mapped[Optional[float]] = mapped_column(Float)
+    avg_watts: Mapped[Optional[float]] = mapped_column(Float)
+    avg_cadence: Mapped[Optional[float]] = mapped_column(Float)
+    pr_rank: Mapped[Optional[int]] = mapped_column(Integer)  # 1 = PR, null = not a PR
+    kom_rank: Mapped[Optional[int]] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 # ─── Sleep ────────────────────────────────────────────────────────────────────

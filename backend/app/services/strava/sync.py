@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from app.services.strava.client import strava_client
 from app.db.session import AsyncSessionLocal
-from app.models.models import Activity, UserProfile
+from app.models.models import Activity, SegmentEffort, UserProfile
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
@@ -130,9 +130,105 @@ async def sync_strava():
         if new_count:
             print(f"Strava: stored {new_count} new activities")
 
+    # Sync GPS + segments for rides not yet processed
+    await sync_segments_for_rides()
+
     # Always backfill TSS for existing activities with null TSS
     # This handles the case where LTHR/FTP was set AFTER activities were synced
     await _backfill_tss(ftp, lthr)
+
+
+# ─── Segment + GPS Sync ───────────────────────────────────────────────────────
+
+async def _sync_activity_details(activity: Activity, session):
+    """Fetch full activity detail from Strava and store GPS + segment efforts."""
+    strava_id = int(activity.source_id.replace("strava_", ""))
+    try:
+        detail = await strava_client.get_activity(strava_id)
+    except Exception as e:
+        logger.warning(f"Could not fetch detail for activity {strava_id}: {e}")
+        activity.segments_synced = True  # mark done so we don't retry forever
+        return
+
+    # GPS data
+    start_latlng = detail.get("start_latlng") or []
+    end_latlng   = detail.get("end_latlng") or []
+    activity.start_lat = start_latlng[0] if len(start_latlng) == 2 else None
+    activity.start_lng = start_latlng[1] if len(start_latlng) == 2 else None
+    activity.end_lat   = end_latlng[0]   if len(end_latlng) == 2   else None
+    activity.end_lng   = end_latlng[1]   if len(end_latlng) == 2   else None
+    activity.summary_polyline = (detail.get("map") or {}).get("summary_polyline")
+
+    # Segment efforts
+    efforts = detail.get("segment_efforts") or []
+    for e in efforts:
+        seg = e.get("segment") or {}
+        effort_id = e.get("id")
+        if not effort_id:
+            continue
+        # Skip if already stored
+        existing = await session.scalar(
+            select(SegmentEffort).where(SegmentEffort.strava_effort_id == effort_id)
+        )
+        if existing:
+            continue
+
+        start_str = e.get("start_date") or e.get("start_date_local", "")
+        try:
+            effort_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
+            effort_date = effort_dt.date()
+        except (ValueError, AttributeError):
+            effort_date = activity.activity_date
+
+        session.add(SegmentEffort(
+            activity_id=activity.id,
+            strava_segment_id=seg.get("id", 0),
+            strava_effort_id=effort_id,
+            name=seg.get("name", e.get("name", "Unknown")),
+            effort_date=effort_date,
+            elapsed_time=e.get("elapsed_time", 0),
+            moving_time=e.get("moving_time"),
+            distance_meters=e.get("distance"),
+            avg_heart_rate=e.get("average_heartrate"),
+            avg_watts=e.get("average_watts"),
+            avg_cadence=e.get("average_cadence"),
+            pr_rank=e.get("pr_rank"),
+            kom_rank=e.get("kom_rank"),
+        ))
+
+    activity.segments_synced = True
+
+
+async def sync_segments_for_rides():
+    """
+    Backfill GPS and segment efforts for all Ride activities not yet synced.
+    Processes up to 30 per run to stay within Strava rate limits.
+    """
+    if not strava_client.is_configured():
+        return
+
+    async with AsyncSessionLocal() as session:
+        rides = list(await session.scalars(
+            select(Activity)
+            .where(
+                Activity.source == "strava",
+                Activity.sport_type == "ride",
+                Activity.segments_synced == False,
+            )
+            .order_by(Activity.activity_date.desc())
+            .limit(30)
+        ))
+
+        if not rides:
+            print("Segments: all rides already synced ✓")
+            return
+
+        print(f"Segments: fetching details for {len(rides)} rides...")
+        for activity in rides:
+            await _sync_activity_details(activity, session)
+
+        await session.commit()
+        print(f"Segments: synced {len(rides)} rides")
 
 
 # ─── TSS Backfill ─────────────────────────────────────────────────────────────

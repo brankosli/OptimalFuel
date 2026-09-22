@@ -54,3 +54,11 @@ export const racesApi = {
 export const raceTemplateApi = {
   get: (raceId: number) => api.get(`/api/v1/races/${raceId}/template`),
 }
+
+export const comparisonApi = {
+  segments:       ()                  => api.get('/api/v1/comparison/segments'),
+  segmentEfforts: (id: number)        => api.get(`/api/v1/comparison/segments/${id}`),
+  routes:         ()                  => api.get('/api/v1/comparison/routes'),
+  routeRides:     (key: string)       => api.get(`/api/v1/comparison/routes/${key}`),
+  triggerSync:    ()                  => api.post('/api/v1/comparison/sync'),
+}

@@ -131,10 +131,10 @@ def compute_training_strain(daily_tss, current_date, days=7):
 async def recompute_daily_summaries():
     async with AsyncSessionLocal() as session:
 
-        # Exclude polar_dedup activities from load calculations
+        # Only Strava activities for training load calculations
         activities = list(await session.scalars(
             select(Activity)
-            .where(Activity.source.notin_(["polar_dedup", "strava_dedup"]))
+            .where(Activity.source == "strava")
             .order_by(Activity.activity_date)
         ))
         sleep_records = list(await session.scalars(

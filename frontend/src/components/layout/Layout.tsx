@@ -3,14 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { authApi } from '@/utils/api'
 
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: '⚡' },
-  { to: '/training',  label: 'Training',  icon: '🏃' },
-  { to: '/sleep',     label: 'Sleep',     icon: '🌙' },
-  { to: '/wellness',  label: 'Wellness',  icon: '🧠' },
-  { to: '/nutrition', label: 'Nutrition', icon: '🥗' },
-  { to: '/races',     label: 'Races',     icon: '🏁' },
-  { to: '/report',    label: 'Report',    icon: '📊' },
-  { to: '/settings',  label: 'Settings',  icon: '⚙️' },
+  { to: '/dashboard',  label: 'Dashboard',   icon: '⚡' },
+  { to: '/training',   label: 'Training',    icon: '🏃' },
+  { to: '/sleep',      label: 'Sleep',       icon: '🌙' },
+  { to: '/wellness',   label: 'Wellness',    icon: '🧠' },
+  { to: '/nutrition',  label: 'Nutrition',   icon: '🥗' },
+  { to: '/races',      label: 'Races',       icon: '🏁' },
+  { to: '/comparison', label: 'Comparison',  icon: '📈' },
+  { to: '/report',     label: 'Report',      icon: '📊' },
+  { to: '/settings',   label: 'Settings',    icon: '⚙️' },
 ]
 
 export default function Layout() {

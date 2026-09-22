@@ -8,6 +8,7 @@ import SettingsPage from '@/pages/SettingsPage'
 import ReportPage from '@/pages/ReportPage'
 import RacesPage from '@/pages/RacesPage'
 import WellnessPage from '@/pages/WellnessPage'
+import ComparisonPage from '@/pages/ComparisonPage'
 
 export default function App() {
   return (
@@ -15,14 +16,15 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard"  element={<DashboardPage />} />
-          <Route path="training"   element={<TrainingPage />} />
-          <Route path="sleep"      element={<SleepPage />} />
-          <Route path="nutrition"  element={<NutritionPage />} />
-          <Route path="wellness"   element={<WellnessPage />} />
-          <Route path="races"      element={<RacesPage />} />
-          <Route path="report"     element={<ReportPage />} />
-          <Route path="settings"   element={<SettingsPage />} />
+          <Route path="dashboard"   element={<DashboardPage />} />
+          <Route path="training"    element={<TrainingPage />} />
+          <Route path="sleep"       element={<SleepPage />} />
+          <Route path="nutrition"   element={<NutritionPage />} />
+          <Route path="wellness"    element={<WellnessPage />} />
+          <Route path="races"       element={<RacesPage />} />
+          <Route path="comparison"  element={<ComparisonPage />} />
+          <Route path="report"      element={<ReportPage />} />
+          <Route path="settings"    element={<SettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
